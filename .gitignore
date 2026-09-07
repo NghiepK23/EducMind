@@ -1,0 +1,31 @@
+# Java / Maven
+**/target/
+**/.mvn/timing.properties
+**/dependency-reduced-pom.xml
+
+# Java / IDE
+.classpath
+.project
+.settings/
+.vscode/
+.idea/
+*.iml
+
+# macOS
+.DS_Store
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Logs
+*.log

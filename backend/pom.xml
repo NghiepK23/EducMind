@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>4.1.1</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.educmind</groupId>
+    <artifactId>educmind-backend</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+
+    <packaging>pom</packaging>
+
+    <name>EducMind Backend</name>
+    <description>EducMind Modular Monolith Backend</description>
+
+    <properties>
+        <java.version>21</java.version>
+    </properties>
+
+    <modules>
+		<module>educmind-app</module>
+        <module>educmind-common</module>
+        <module>module-auth</module>
+        <module>module-schoolclass</module>
+        <module>module-course</module>
+        <module>module-assignment</module>
+        <module>module-assessment</module>
+        <module>module-analytics</module>
+        <module>module-teacher-assistant</module>
+        <module>module-tutor</module>
+        <module>module-personalization</module>
+        <module>module-notification</module>
+        <module>module-reports</module>
+    </modules>
+
+</project>
