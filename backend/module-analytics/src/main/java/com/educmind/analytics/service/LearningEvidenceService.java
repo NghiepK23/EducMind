@@ -10,10 +10,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -22,7 +25,8 @@ import java.util.UUID;
  * Implement LearningEvidencePort — Module05_LearningEvidence_Analytics_FINAL.md mục 4.1 / 4.2 / 4.6.
  * Idempotent theo (sourceType, sourceId). Không tìm được class_id thì log ERROR và bỏ qua,
  * không throw để không làm hỏng luồng nộp/chấm bài của Module 4.
- * Chưa tính mastery/knowledge gap (bước sau).
+ * Sau khi evidence commit, gọi MasteryService.recompute (đồng bộ, transaction riêng, lỗi chỉ log).
+ * Chưa tính knowledge gap (bước sau).
  */
 @Service
 public class LearningEvidenceService implements LearningEvidencePort {
@@ -33,13 +37,16 @@ public class LearningEvidenceService implements LearningEvidencePort {
     private final LearningEvidenceRepository evidenceRepository;
     private final CourseAccessPort courseAccessPort;
     private final LessonAccessPort lessonAccessPort;
+    private final MasteryService masteryService;
 
     public LearningEvidenceService(LearningEvidenceRepository evidenceRepository,
                                    CourseAccessPort courseAccessPort,
-                                   LessonAccessPort lessonAccessPort) {
+                                   LessonAccessPort lessonAccessPort,
+                                   MasteryService masteryService) {
         this.evidenceRepository = evidenceRepository;
         this.courseAccessPort = courseAccessPort;
         this.lessonAccessPort = lessonAccessPort;
+        this.masteryService = masteryService;
     }
 
     @Override
@@ -64,11 +71,13 @@ public class LearningEvidenceService implements LearningEvidencePort {
                     null, null, LearningEvidence.SOURCE_ASSIGNMENT, submissionId, ONE, null, occurredAt));
             return;
         }
+        List<LearningEvidence> saved = new ArrayList<>();
         for (LessonAccessPort.ObjectiveInfo objective : objectives) {
-            evidenceRepository.save(new LearningEvidence(studentId, classId.get(), courseId,
+            saved.add(evidenceRepository.save(new LearningEvidence(studentId, classId.get(), courseId,
                     lessonId, objective.id(), LearningEvidence.SOURCE_ASSIGNMENT, submissionId,
-                    ONE, null, occurredAt));
+                    ONE, null, occurredAt)));
         }
+        recomputeAfterCommit(saved);
     }
 
     @Override
@@ -90,6 +99,7 @@ public class LearningEvidenceService implements LearningEvidencePort {
             evidence.updateScore(normalized, raw);
         }
         evidenceRepository.saveAll(evidences);
+        recomputeAfterCommit(evidences);
     }
 
     @Override
@@ -107,15 +117,52 @@ public class LearningEvidenceService implements LearningEvidencePort {
                     courseId, studentId, attemptId);
             return;
         }
+        List<LearningEvidence> saved = new ArrayList<>();
         for (ObjectiveGroupScore group : groups) {
             if (group.totalWeight() == null || group.totalWeight().signum() <= 0) {
                 continue;
             }
             BigDecimal score = clamp01(group.totalAwarded().divide(group.totalWeight(), 4, RoundingMode.HALF_UP));
             BigDecimal raw = group.totalAwarded().setScale(2, RoundingMode.HALF_UP);
-            evidenceRepository.save(new LearningEvidence(studentId, classId.get(), courseId,
+            saved.add(evidenceRepository.save(new LearningEvidence(studentId, classId.get(), courseId,
                     group.lessonId(), group.learningObjectiveId(), sourceType, attemptId,
-                    score, raw, occurredAt));
+                    score, raw, occurredAt)));
+        }
+        recomputeAfterCommit(saved);
+    }
+
+    /**
+     * Tính lại mastery cho các evidence có cả lesson và objective, SAU KHI evidence commit.
+     * Evidence "chung" (lesson/objective null) bị bỏ qua. Lỗi từng objective chỉ log ERROR,
+     * không ảnh hưởng evidence đã lưu và không ảnh hưởng nộp/chấm bài.
+     */
+    private void recomputeAfterCommit(List<LearningEvidence> evidences) {
+        List<LearningEvidence> targets = evidences.stream()
+                .filter(e -> e.getLessonId() != null && e.getLearningObjectiveId() != null)
+                .toList();
+        if (targets.isEmpty()) {
+            return;
+        }
+        Runnable task = () -> {
+            for (LearningEvidence e : targets) {
+                try {
+                    masteryService.recompute(e.getStudentId(), e.getLessonId(),
+                            e.getLearningObjectiveId(), e.getId());
+                } catch (Exception ex) {
+                    log.error("Tính mastery lỗi: student={}, lesson={}, objective={}, evidence={}",
+                            e.getStudentId(), e.getLessonId(), e.getLearningObjectiveId(), e.getId(), ex);
+                }
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    task.run();
+                }
+            });
+        } else {
+            task.run();
         }
     }
 
