@@ -14,6 +14,21 @@
 
     <artifactId>educmind-common</artifactId>
 
+    <dependencies>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-webmvc</artifactId>
+        </dependency>
+        <!-- Chỉ lấy core lib (AuthorizationDeniedException, AccessDeniedException...),
+             KHÔNG dùng spring-boot-starter-security để tránh tự động kích hoạt
+             Spring Security auto-configuration ở mọi module dùng educmind-common
+             (educmind-common là shared library cho cả module không liên quan security). -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-core</artifactId>
+        </dependency>
+    </dependencies>
+
     <name>EducMind Common</name>
     <description>Shared components for EducMind modules</description>
 

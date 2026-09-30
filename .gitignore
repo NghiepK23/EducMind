@@ -29,3 +29,6 @@ env/
 
 # Logs
 *.log
+
+# Local file storage (dev only, chưa có Object Storage thật)
+backend/educmind-app/storage/
