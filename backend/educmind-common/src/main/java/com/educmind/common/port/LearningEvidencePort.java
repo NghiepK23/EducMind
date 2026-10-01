@@ -37,6 +37,7 @@ public interface LearningEvidencePort {
      * Attempt chuyển sang GRADED. Chỉ gọi đúng 1 lần, ở lần chuyển trạng thái đó.
      * attemptNumber = 1 → ASSESSMENT, > 1 → REASSESSMENT.
      */
-    void onAttemptGraded(UUID courseId, UUID studentId, UUID attemptId, int attemptNumber,
+    void onAttemptGraded(UUID courseId, UUID studentId, UUID attemptId, UUID assessmentId,
+                         int attemptNumber, int maxAttempts,
                          OffsetDateTime occurredAt, List<ObjectiveGroupScore> groups);
 }

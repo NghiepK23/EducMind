@@ -411,8 +411,11 @@ public class AssessmentService {
                 .toList();
         OffsetDateTime occurredAt = attempt.getSubmittedAt() != null
                 ? attempt.getSubmittedAt() : OffsetDateTime.now();
+        int assessmentMaxAttempts = assessmentRepository.findById(attempt.getAssessmentId())
+                .map(Assessment::getMaxAttempts).orElse(0);
         learningEvidencePort.onAttemptGraded(courseId, attempt.getStudentId(), attempt.getId(),
-                attempt.getAttemptNumber(), occurredAt, groups);
+                attempt.getAssessmentId(),
+                attempt.getAttemptNumber(), assessmentMaxAttempts, occurredAt, groups);
     }
 
     private static final org.slf4j.Logger EVIDENCE_LOG =

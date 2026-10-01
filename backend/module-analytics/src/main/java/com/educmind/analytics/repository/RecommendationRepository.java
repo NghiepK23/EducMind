@@ -10,6 +10,9 @@ public interface RecommendationRepository extends JpaRepository<Recommendation, 
     /** Đã có recommendation theo trạng thái này cho gap chưa — chống sinh trùng cho loại gắn gap. */
     boolean existsByKnowledgeGapIdAndStatus(UUID knowledgeGapId, String status);
 
+    /** Chống trùng REATTEMPT_ASSESSMENT: mỗi gap tối đa 1 recommendation loại này đang ACTIVE. */
+    boolean existsByKnowledgeGapIdAndTypeAndStatus(UUID knowledgeGapId, String type, String status);
+
     /** Chống sinh trùng cho loại không gắn gap (ADVANCED_ACTIVITY). */
     boolean existsByStudentIdAndLessonIdAndLearningObjectiveIdAndTypeAndStatus(
             UUID studentId, UUID lessonId, UUID learningObjectiveId, String type, String status);

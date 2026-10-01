@@ -38,15 +38,18 @@ public class LearningEvidenceService implements LearningEvidencePort {
     private final CourseAccessPort courseAccessPort;
     private final LessonAccessPort lessonAccessPort;
     private final MasteryService masteryService;
+    private final ReattemptRecommendationService reattemptRecommendationService;
 
     public LearningEvidenceService(LearningEvidenceRepository evidenceRepository,
                                    CourseAccessPort courseAccessPort,
                                    LessonAccessPort lessonAccessPort,
-                                   MasteryService masteryService) {
+                                   MasteryService masteryService,
+                                   ReattemptRecommendationService reattemptRecommendationService) {
         this.evidenceRepository = evidenceRepository;
         this.courseAccessPort = courseAccessPort;
         this.lessonAccessPort = lessonAccessPort;
         this.masteryService = masteryService;
+        this.reattemptRecommendationService = reattemptRecommendationService;
     }
 
     @Override
@@ -104,7 +107,8 @@ public class LearningEvidenceService implements LearningEvidencePort {
 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void onAttemptGraded(UUID courseId, UUID studentId, UUID attemptId, int attemptNumber,
+    public void onAttemptGraded(UUID courseId, UUID studentId, UUID attemptId, UUID assessmentId,
+                                int attemptNumber, int maxAttempts,
                                 OffsetDateTime occurredAt, List<ObjectiveGroupScore> groups) {
         String sourceType = attemptNumber > 1
                 ? LearningEvidence.SOURCE_REASSESSMENT : LearningEvidence.SOURCE_ASSESSMENT;
@@ -128,7 +132,8 @@ public class LearningEvidenceService implements LearningEvidencePort {
                     group.lessonId(), group.learningObjectiveId(), sourceType, attemptId,
                     score, raw, occurredAt)));
         }
-        recomputeAfterCommit(saved);
+        recomputeAfterCommit(saved, () -> reattemptRecommendationService.generateIfNeeded(
+                studentId, courseId, attemptNumber, maxAttempts, groups));
     }
 
     /**
@@ -137,6 +142,11 @@ public class LearningEvidenceService implements LearningEvidencePort {
      * không ảnh hưởng evidence đã lưu và không ảnh hưởng nộp/chấm bài.
      */
     private void recomputeAfterCommit(List<LearningEvidence> evidences) {
+        recomputeAfterCommit(evidences, null);
+    }
+
+    /** afterRecompute chạy sau khi mọi recompute xong (cùng điểm afterCommit); lỗi chỉ log. */
+    private void recomputeAfterCommit(List<LearningEvidence> evidences, Runnable afterRecompute) {
         List<LearningEvidence> targets = evidences.stream()
                 .filter(e -> e.getLessonId() != null && e.getLearningObjectiveId() != null)
                 .toList();
@@ -151,6 +161,13 @@ public class LearningEvidenceService implements LearningEvidencePort {
                 } catch (Exception ex) {
                     log.error("Tính mastery lỗi: student={}, lesson={}, objective={}, evidence={}",
                             e.getStudentId(), e.getLessonId(), e.getLearningObjectiveId(), e.getId(), ex);
+                }
+            }
+            if (afterRecompute != null) {
+                try {
+                    afterRecompute.run();
+                } catch (Exception ex) {
+                    log.error("Sinh REATTEMPT_ASSESSMENT lỗi, bỏ qua", ex);
                 }
             }
         };
