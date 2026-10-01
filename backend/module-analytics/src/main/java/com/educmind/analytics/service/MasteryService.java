@@ -42,15 +42,18 @@ public class MasteryService {
     private final MasteryRepository masteryRepository;
     private final MasteryHistoryRepository historyRepository;
     private final MasteryProperties properties;
+    private final KnowledgeGapService knowledgeGapService;
 
     public MasteryService(LearningEvidenceRepository evidenceRepository,
                           MasteryRepository masteryRepository,
                           MasteryHistoryRepository historyRepository,
-                          MasteryProperties properties) {
+                          MasteryProperties properties,
+                          KnowledgeGapService knowledgeGapService) {
         this.evidenceRepository = evidenceRepository;
         this.masteryRepository = masteryRepository;
         this.historyRepository = historyRepository;
         this.properties = properties;
+        this.knowledgeGapService = knowledgeGapService;
     }
 
     /**
@@ -96,6 +99,9 @@ public class MasteryService {
         mastery = masteryRepository.save(mastery);
 
         historyRepository.save(new MasteryHistory(mastery.getId(), score, triggerEvidenceId));
+
+        knowledgeGapService.evaluate(studentId, lessonId, learningObjectiveId, courseId,
+                score.doubleValue(), count);
     }
 
     /**

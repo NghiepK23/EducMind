@@ -1,0 +1,54 @@
+package com.educmind.analytics.service;
+
+import com.educmind.analytics.entity.KnowledgeGap;
+import com.educmind.analytics.repository.KnowledgeGapRepository;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.stereotype.Service;
+
+/**
+ * Mo / dong knowledge gap - Module05_LearningEvidence_Analytics_FINAL.md muc 4.4.
+ * Khong co @Transactional rieng: chay chung transaction cua MasteryService.recompute,
+ * nen mastery va gap luon nhat quan.
+ */
+@Service
+public class KnowledgeGapService {
+
+    private final KnowledgeGapRepository knowledgeGapRepository;
+    private final GapProperties gapProperties;
+
+    public KnowledgeGapService(KnowledgeGapRepository knowledgeGapRepository,
+                               GapProperties gapProperties) {
+        this.knowledgeGapRepository = knowledgeGapRepository;
+        this.gapProperties = gapProperties;
+    }
+
+    public void evaluate(UUID studentId, UUID lessonId, UUID learningObjectiveId,
+                         UUID courseId, double masteryScore, int evidenceCount) {
+
+        Optional<KnowledgeGap> openGap = knowledgeGapRepository
+                .findByStudentIdAndLessonIdAndLearningObjectiveIdAndStatus(
+                        studentId, lessonId, learningObjectiveId, KnowledgeGap.STATUS_OPEN);
+
+        if (openGap.isPresent()) {
+            if (masteryScore >= gapProperties.getResolveThreshold()) {
+                KnowledgeGap gap = openGap.get();
+                gap.resolve(String.format(Locale.ROOT,
+                        "Mastery %.4f >= resolve-threshold %.2f (%d evidence)",
+                        masteryScore, gapProperties.getResolveThreshold(), evidenceCount));
+                knowledgeGapRepository.save(gap);
+            }
+            return;
+        }
+
+        if (masteryScore < gapProperties.getOpenThreshold()
+                && evidenceCount >= gapProperties.getMinEvidence()) {
+            KnowledgeGap gap = new KnowledgeGap(studentId, lessonId, learningObjectiveId, courseId,
+                    String.format(Locale.ROOT,
+                            "Mastery %.4f < open-threshold %.2f (%d evidence)",
+                            masteryScore, gapProperties.getOpenThreshold(), evidenceCount));
+            knowledgeGapRepository.save(gap);
+        }
+    }
+}
