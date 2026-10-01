@@ -1,8 +1,11 @@
 package com.educmind.analytics.repository;
 
 import com.educmind.analytics.entity.Recommendation;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.UUID;
 
 public interface RecommendationRepository extends JpaRepository<Recommendation, UUID> {
@@ -16,4 +19,11 @@ public interface RecommendationRepository extends JpaRepository<Recommendation, 
     /** Chống sinh trùng cho loại không gắn gap (ADVANCED_ACTIVITY). */
     boolean existsByStudentIdAndLessonIdAndLearningObjectiveIdAndTypeAndStatus(
             UUID studentId, UUID lessonId, UUID learningObjectiveId, String type, String status);
+
+    Page<Recommendation> findByStudentIdAndCourseIdAndReviewStatusIn(
+            UUID studentId, UUID courseId, Collection<String> reviewStatuses, Pageable pageable);
+
+    Page<Recommendation> findByStudentIdAndCourseIdAndStatusAndReviewStatusIn(
+            UUID studentId, UUID courseId, String status, Collection<String> reviewStatuses,
+            Pageable pageable);
 }
