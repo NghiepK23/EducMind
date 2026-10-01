@@ -17,11 +17,14 @@ public class KnowledgeGapService {
 
     private final KnowledgeGapRepository knowledgeGapRepository;
     private final GapProperties gapProperties;
+    private final RecommendationService recommendationService;
 
     public KnowledgeGapService(KnowledgeGapRepository knowledgeGapRepository,
-                               GapProperties gapProperties) {
+                               GapProperties gapProperties,
+                               RecommendationService recommendationService) {
         this.knowledgeGapRepository = knowledgeGapRepository;
         this.gapProperties = gapProperties;
+        this.recommendationService = recommendationService;
     }
 
     public void evaluate(UUID studentId, UUID lessonId, UUID learningObjectiveId,
@@ -39,6 +42,8 @@ public class KnowledgeGapService {
                         masteryScore, gapProperties.getResolveThreshold(), evidenceCount));
                 knowledgeGapRepository.save(gap);
             }
+            recommendationService.generateAdvancedIfNeeded(studentId, lessonId,
+                    learningObjectiveId, courseId, masteryScore);
             return;
         }
 
@@ -48,7 +53,10 @@ public class KnowledgeGapService {
                     String.format(Locale.ROOT,
                             "Mastery %.4f < open-threshold %.2f (%d evidence)",
                             masteryScore, gapProperties.getOpenThreshold(), evidenceCount));
-            knowledgeGapRepository.save(gap);
+            KnowledgeGap saved = knowledgeGapRepository.save(gap);
+            recommendationService.generateForGap(saved, masteryScore);
         }
+        recommendationService.generateAdvancedIfNeeded(studentId, lessonId,
+                learningObjectiveId, courseId, masteryScore);
     }
 }

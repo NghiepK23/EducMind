@@ -1,6 +1,7 @@
 package com.educmind.common.port;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -35,4 +36,7 @@ public interface LessonAccessPort {
      * false trong mọi trường hợp còn lại (lesson không tồn tại, đã xóa, hoặc thuộc course khác).
      */
     boolean lessonBelongsToCourse(UUID lessonId, UUID courseId);
+
+    /** id resource mới nhất (chưa xóa) của lesson; Optional.empty() nếu lesson chưa có resource nào. */
+    Optional<UUID> findLatestResourceIdByLessonId(UUID lessonId);
 }

@@ -28,4 +28,7 @@ public interface ResourceRepository extends JpaRepository<Resource, UUID> {
      * Resource gắn cấp 1 lesson cụ thể — dùng khi liệt kê tài liệu của 1 lesson.
      */
     List<Resource> findByLessonIdAndDeletedAtIsNull(UUID lessonId);
+
+    /** Resource mới nhất (chưa xóa) của 1 lesson — dùng chọn target_resource_id cho recommendation. */
+    Optional<Resource> findFirstByLessonIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID lessonId);
 }

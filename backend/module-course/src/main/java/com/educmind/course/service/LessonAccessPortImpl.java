@@ -4,10 +4,12 @@ import com.educmind.common.port.LessonAccessPort;
 import com.educmind.course.entity.LearningObjective;
 import com.educmind.course.entity.Lesson;
 import com.educmind.course.repository.LessonRepository;
+import com.educmind.course.repository.ResourceRepository;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -18,9 +20,11 @@ import java.util.UUID;
 public class LessonAccessPortImpl implements LessonAccessPort {
 
     private final LessonRepository lessonRepository;
+    private final ResourceRepository resourceRepository;
 
-    public LessonAccessPortImpl(LessonRepository lessonRepository) {
+    public LessonAccessPortImpl(LessonRepository lessonRepository, ResourceRepository resourceRepository) {
         this.lessonRepository = lessonRepository;
+        this.resourceRepository = resourceRepository;
     }
 
     @Override
@@ -50,6 +54,16 @@ public class LessonAccessPortImpl implements LessonAccessPort {
         return lessonRepository.findByIdAndDeletedAtIsNull(lessonId)
                 .map(lesson -> courseId.equals(lesson.getCourseId()))
                 .orElse(false);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<UUID> findLatestResourceIdByLessonId(UUID lessonId) {
+        if (lessonId == null) {
+            return Optional.empty();
+        }
+        return resourceRepository.findFirstByLessonIdAndDeletedAtIsNullOrderByCreatedAtDesc(lessonId)
+                .map(r -> r.getId());
     }
 
     private List<ObjectiveInfo> toObjectiveInfos(Lesson lesson) {
