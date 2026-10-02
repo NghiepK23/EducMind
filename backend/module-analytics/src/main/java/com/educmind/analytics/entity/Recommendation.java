@@ -88,6 +88,18 @@ public class Recommendation {
         this.updatedAt = now;
     }
 
+    /** Học sinh chấp nhận gợi ý. Điều kiện (đang ACTIVE...) do service kiểm tra trước khi gọi. */
+    public void accept() {
+        this.status = STATUS_ACCEPTED;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
+    /** Học sinh bỏ qua gợi ý. Điều kiện (đang ACTIVE...) do service kiểm tra trước khi gọi. */
+    public void dismiss() {
+        this.status = STATUS_DISMISSED;
+        this.updatedAt = OffsetDateTime.now();
+    }
+
     public UUID getId() { return id; }
     public UUID getStudentId() { return studentId; }
     public UUID getLessonId() { return lessonId; }
