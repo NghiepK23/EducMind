@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,4 +22,17 @@ public interface KnowledgeGapRepository extends JpaRepository<KnowledgeGap, UUID
 
     Page<KnowledgeGap> findByStudentIdAndCourseIdAndStatus(
             UUID studentId, UUID courseId, String status, Pageable pageable);
+
+    // ---- API giao vien: truy van theo course (va tuy chon theo tap hoc sinh cua lop) ----
+
+    Page<KnowledgeGap> findByCourseId(UUID courseId, Pageable pageable);
+
+    Page<KnowledgeGap> findByCourseIdAndStatus(UUID courseId, String status, Pageable pageable);
+
+    /** Caller phai dam bao studentIds khong rong (IN () rong khong an toan voi Hibernate). */
+    Page<KnowledgeGap> findByCourseIdAndStudentIdIn(
+            UUID courseId, Collection<UUID> studentIds, Pageable pageable);
+
+    Page<KnowledgeGap> findByCourseIdAndStudentIdInAndStatus(
+            UUID courseId, Collection<UUID> studentIds, String status, Pageable pageable);
 }

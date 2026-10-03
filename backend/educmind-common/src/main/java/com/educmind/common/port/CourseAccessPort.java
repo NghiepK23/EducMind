@@ -91,4 +91,13 @@ public interface CourseAccessPort {
      * Dùng cho: Module 5 điền learning_evidence.class_id.
      */
     Optional<UUID> findSourceClassId(UUID courseId, UUID studentId);
+
+    /**
+     * Danh sách studentId đang ACTIVE (left_at IS NULL, memberRole='STUDENT') trong
+     * course, với source_class_id = classId. Rỗng nếu không có học sinh nào khớp
+     * (kể cả khi course/class không tồn tại — caller tự kiểm tra quyền trước).
+     *
+     * Dùng cho: Module 5, lọc knowledge gap / mastery theo lớp (class_id) ở API giáo viên.
+     */
+    List<UUID> findActiveStudentIdsByCourseAndSourceClass(UUID courseId, UUID classId);
 }

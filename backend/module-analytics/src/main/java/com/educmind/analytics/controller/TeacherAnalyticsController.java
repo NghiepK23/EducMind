@@ -1,6 +1,8 @@
 package com.educmind.analytics.controller;
 
 import com.educmind.analytics.dto.MasteryResponse;
+import com.educmind.analytics.dto.KnowledgeGapResponse;
+import com.educmind.analytics.service.TeacherKnowledgeGapQueryService;
 import com.educmind.analytics.service.TeacherStudentMasteryQueryService;
 import com.educmind.common.envelope.ApiResponse;
 import org.springframework.http.ResponseEntity;
@@ -11,7 +13,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -22,9 +26,12 @@ import java.util.UUID;
 public class TeacherAnalyticsController {
 
     private final TeacherStudentMasteryQueryService studentMasteryQueryService;
+    private final TeacherKnowledgeGapQueryService knowledgeGapQueryService;
 
-    public TeacherAnalyticsController(TeacherStudentMasteryQueryService studentMasteryQueryService) {
+    public TeacherAnalyticsController(TeacherStudentMasteryQueryService studentMasteryQueryService,
+                                      TeacherKnowledgeGapQueryService knowledgeGapQueryService) {
         this.studentMasteryQueryService = studentMasteryQueryService;
+        this.knowledgeGapQueryService = knowledgeGapQueryService;
     }
 
     @GetMapping("/api/v1/students/{studentId}/mastery")
@@ -36,5 +43,27 @@ public class TeacherAnalyticsController {
         UUID actorId = UUID.fromString(authentication.getName());
         return ResponseEntity.ok(ApiResponse.success(
                 studentMasteryQueryService.find(actorId, studentId, courseId)));
+    }
+
+    @GetMapping("/api/v1/courses/{courseId}/analytics/knowledge-gaps")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ResponseEntity<ApiResponse<List<KnowledgeGapResponse>>> getCourseKnowledgeGaps(
+            Authentication authentication,
+            @PathVariable UUID courseId,
+            @RequestParam(name = "class_id", required = false) UUID classId,
+            @RequestParam(name = "status", required = false) String status,
+            @RequestParam(name = "page", required = false) Integer page,
+            @RequestParam(name = "size", required = false) Integer size) {
+        UUID actorId = UUID.fromString(authentication.getName());
+        TeacherKnowledgeGapQueryService.Result r =
+                knowledgeGapQueryService.find(actorId, courseId, classId, status, page, size);
+        Map<String, Object> pagination = new LinkedHashMap<>();
+        pagination.put("page", r.page());
+        pagination.put("size", r.size());
+        pagination.put("total_items", r.totalItems());
+        pagination.put("total_pages", r.totalPages());
+        Map<String, Object> meta = new LinkedHashMap<>();
+        meta.put("pagination", pagination);
+        return ResponseEntity.ok(ApiResponse.success(r.items(), meta));
     }
 }

@@ -115,4 +115,9 @@ public class CourseAccessPortImpl implements CourseAccessPort {
                 .filter(cm -> ROLE_STUDENT.equals(cm.getMemberRole()))
                 .map(cm -> cm.getSourceClassId());
     }
+
+    @Override
+    public List<UUID> findActiveStudentIdsByCourseAndSourceClass(UUID courseId, UUID classId) {
+        return courseMemberRepository.findActiveStudentIdsByCourseIdAndSourceClassId(courseId, classId);
+    }
 }
