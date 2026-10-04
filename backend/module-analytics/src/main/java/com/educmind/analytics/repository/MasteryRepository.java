@@ -2,11 +2,42 @@ package com.educmind.analytics.repository;
 
 import com.educmind.analytics.entity.Mastery;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Optional;
 import java.util.UUID;
 
 public interface MasteryRepository extends JpaRepository<Mastery, UUID> {
+
+    /** Dòng tổng hợp theo (lesson, objective) cho mastery-overview. */
+    interface OverviewRow {
+        UUID getLessonId();
+        UUID getLearningObjectiveId();
+        Long getStudentCount();
+        Double getAvgMastery();
+        Long getLowCount();
+        Long getMediumCount();
+        Long getHighCount();
+    }
+
+    String OVERVIEW_SELECT =
+            "SELECT m.lessonId AS lessonId, m.learningObjectiveId AS learningObjectiveId, "
+          + "COUNT(m) AS studentCount, AVG(m.masteryScore) AS avgMastery, "
+          + "SUM(CASE WHEN m.confidenceLevel = 'LOW' THEN 1 ELSE 0 END) AS lowCount, "
+          + "SUM(CASE WHEN m.confidenceLevel = 'MEDIUM' THEN 1 ELSE 0 END) AS mediumCount, "
+          + "SUM(CASE WHEN m.confidenceLevel = 'HIGH' THEN 1 ELSE 0 END) AS highCount "
+          + "FROM Mastery m WHERE m.courseId = :courseId ";
+
+    /** Tổng hợp mastery cả course (mastery-overview, không truyền class_id). */
+    @Query(OVERVIEW_SELECT + "GROUP BY m.lessonId, m.learningObjectiveId")
+    java.util.List<OverviewRow> summarizeByCourse(@Param("courseId") UUID courseId);
+
+    /** Tổng hợp mastery của 1 nhóm học sinh trong course (mastery-overview, có class_id). */
+    @Query(OVERVIEW_SELECT + "AND m.studentId IN :studentIds GROUP BY m.lessonId, m.learningObjectiveId")
+    java.util.List<OverviewRow> summarizeByCourseAndStudents(
+            @Param("courseId") UUID courseId,
+            @Param("studentIds") java.util.Collection<UUID> studentIds);
 
     /** Tìm dòng mastery theo khóa unique (student, lesson, objective) — dùng cho upsert khi tính lại. */
     Optional<Mastery> findByStudentIdAndLessonIdAndLearningObjectiveId(

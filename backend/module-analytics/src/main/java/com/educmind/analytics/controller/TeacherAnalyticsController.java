@@ -1,10 +1,12 @@
 package com.educmind.analytics.controller;
 
 import com.educmind.analytics.dto.MasteryMatrixResponse;
+import com.educmind.analytics.dto.MasteryOverviewResponse;
 import com.educmind.analytics.dto.MasteryResponse;
 import com.educmind.analytics.dto.KnowledgeGapResponse;
 import com.educmind.analytics.service.TeacherKnowledgeGapQueryService;
 import com.educmind.analytics.service.TeacherMasteryMatrixQueryService;
+import com.educmind.analytics.service.TeacherMasteryOverviewQueryService;
 import com.educmind.analytics.service.TeacherStudentMasteryQueryService;
 import com.educmind.common.envelope.ApiResponse;
 import org.springframework.http.ResponseEntity;
@@ -30,13 +32,16 @@ public class TeacherAnalyticsController {
     private final TeacherStudentMasteryQueryService studentMasteryQueryService;
     private final TeacherKnowledgeGapQueryService knowledgeGapQueryService;
     private final TeacherMasteryMatrixQueryService masteryMatrixQueryService;
+    private final TeacherMasteryOverviewQueryService masteryOverviewQueryService;
 
     public TeacherAnalyticsController(TeacherStudentMasteryQueryService studentMasteryQueryService,
                                       TeacherKnowledgeGapQueryService knowledgeGapQueryService,
-                                      TeacherMasteryMatrixQueryService masteryMatrixQueryService) {
+                                      TeacherMasteryMatrixQueryService masteryMatrixQueryService,
+                                      TeacherMasteryOverviewQueryService masteryOverviewQueryService) {
         this.studentMasteryQueryService = studentMasteryQueryService;
         this.knowledgeGapQueryService = knowledgeGapQueryService;
         this.masteryMatrixQueryService = masteryMatrixQueryService;
+        this.masteryOverviewQueryService = masteryOverviewQueryService;
     }
 
     @GetMapping("/api/v1/students/{studentId}/mastery")
@@ -81,5 +86,16 @@ public class TeacherAnalyticsController {
         UUID actorId = UUID.fromString(authentication.getName());
         return ResponseEntity.ok(ApiResponse.success(
                 masteryMatrixQueryService.find(actorId, lessonId, classId)));
+    }
+
+    @GetMapping("/api/v1/courses/{courseId}/analytics/mastery-overview")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ResponseEntity<ApiResponse<MasteryOverviewResponse>> getMasteryOverview(
+            Authentication authentication,
+            @PathVariable UUID courseId,
+            @RequestParam(name = "class_id", required = false) UUID classId) {
+        UUID actorId = UUID.fromString(authentication.getName());
+        return ResponseEntity.ok(ApiResponse.success(
+                masteryOverviewQueryService.find(actorId, courseId, classId)));
     }
 }
