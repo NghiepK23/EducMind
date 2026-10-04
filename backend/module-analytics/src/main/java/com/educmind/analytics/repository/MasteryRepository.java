@@ -17,4 +17,7 @@ public interface MasteryRepository extends JpaRepository<Mastery, UUID> {
 
     /** Mastery của 1 học sinh trong cả course (mọi lesson, mọi objective). */
     java.util.List<Mastery> findByStudentIdAndCourseId(UUID studentId, UUID courseId);
+
+    /** Mastery của nhiều học sinh trong 1 lesson (1 query, dùng cho mastery-matrix). */
+    java.util.List<Mastery> findByLessonIdAndStudentIdIn(UUID lessonId, java.util.Collection<UUID> studentIds);
 }

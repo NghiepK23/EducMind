@@ -1,8 +1,10 @@
 package com.educmind.analytics.controller;
 
+import com.educmind.analytics.dto.MasteryMatrixResponse;
 import com.educmind.analytics.dto.MasteryResponse;
 import com.educmind.analytics.dto.KnowledgeGapResponse;
 import com.educmind.analytics.service.TeacherKnowledgeGapQueryService;
+import com.educmind.analytics.service.TeacherMasteryMatrixQueryService;
 import com.educmind.analytics.service.TeacherStudentMasteryQueryService;
 import com.educmind.common.envelope.ApiResponse;
 import org.springframework.http.ResponseEntity;
@@ -27,11 +29,14 @@ public class TeacherAnalyticsController {
 
     private final TeacherStudentMasteryQueryService studentMasteryQueryService;
     private final TeacherKnowledgeGapQueryService knowledgeGapQueryService;
+    private final TeacherMasteryMatrixQueryService masteryMatrixQueryService;
 
     public TeacherAnalyticsController(TeacherStudentMasteryQueryService studentMasteryQueryService,
-                                      TeacherKnowledgeGapQueryService knowledgeGapQueryService) {
+                                      TeacherKnowledgeGapQueryService knowledgeGapQueryService,
+                                      TeacherMasteryMatrixQueryService masteryMatrixQueryService) {
         this.studentMasteryQueryService = studentMasteryQueryService;
         this.knowledgeGapQueryService = knowledgeGapQueryService;
+        this.masteryMatrixQueryService = masteryMatrixQueryService;
     }
 
     @GetMapping("/api/v1/students/{studentId}/mastery")
@@ -65,5 +70,16 @@ public class TeacherAnalyticsController {
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("pagination", pagination);
         return ResponseEntity.ok(ApiResponse.success(r.items(), meta));
+    }
+
+    @GetMapping("/api/v1/lessons/{lessonId}/analytics/mastery-matrix")
+    @PreAuthorize("hasRole('TEACHER')")
+    public ResponseEntity<ApiResponse<MasteryMatrixResponse>> getMasteryMatrix(
+            Authentication authentication,
+            @PathVariable UUID lessonId,
+            @RequestParam(name = "class_id", required = false) UUID classId) {
+        UUID actorId = UUID.fromString(authentication.getName());
+        return ResponseEntity.ok(ApiResponse.success(
+                masteryMatrixQueryService.find(actorId, lessonId, classId)));
     }
 }

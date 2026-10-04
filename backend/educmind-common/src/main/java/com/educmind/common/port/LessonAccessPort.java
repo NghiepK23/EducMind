@@ -37,6 +37,11 @@ public interface LessonAccessPort {
      */
     boolean lessonBelongsToCourse(UUID lessonId, UUID courseId);
 
+    /**
+     * course_id của lesson. Optional.empty() nếu lesson không tồn tại hoặc đã bị xóa mềm.
+     */
+    Optional<UUID> findCourseIdByLessonId(UUID lessonId);
+
     /** id resource mới nhất (chưa xóa) của lesson; Optional.empty() nếu lesson chưa có resource nào. */
     Optional<UUID> findLatestResourceIdByLessonId(UUID lessonId);
 }

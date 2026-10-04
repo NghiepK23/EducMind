@@ -58,6 +58,16 @@ public class LessonAccessPortImpl implements LessonAccessPort {
 
     @Override
     @Transactional(readOnly = true)
+    public Optional<UUID> findCourseIdByLessonId(UUID lessonId) {
+        if (lessonId == null) {
+            return Optional.empty();
+        }
+        return lessonRepository.findByIdAndDeletedAtIsNull(lessonId)
+                .map(Lesson::getCourseId);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public Optional<UUID> findLatestResourceIdByLessonId(UUID lessonId) {
         if (lessonId == null) {
             return Optional.empty();
