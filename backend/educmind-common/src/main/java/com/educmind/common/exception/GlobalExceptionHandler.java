@@ -11,6 +11,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 import java.util.stream.Collectors;
@@ -83,6 +84,20 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.METHOD_NOT_ALLOWED)
                 .body(ApiResponse.error("METHOD_NOT_ALLOWED", "Phương thức HTTP không được hỗ trợ cho đường dẫn này"));
+    }
+
+    /**
+     * Tham số (query/path) sai kiểu, vd: class_id=abc không ép được sang UUID — Spring MVC ném
+     * MethodArgumentTypeMismatchException. Bắt riêng để trả 400 thay vì bị handleUnexpectedException
+     * nuốt thành 500 (phát hiện khi test GET .../mastery-matrix?class_id=abc).
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        log.warn("Invalid parameter type: {}", ex.getName());
+        return ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("INVALID_FILTER",
+                        "Tham số " + ex.getName() + " không hợp lệ"));
     }
 
     @ExceptionHandler(Exception.class)
