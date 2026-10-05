@@ -122,6 +122,11 @@ public class CourseAccessPortImpl implements CourseAccessPort {
     }
 
     @Override
+    public List<UUID> findActiveStudentIdsByCourse(UUID courseId) {
+        return courseMemberRepository.findActiveStudentIdsByCourseId(courseId);
+    }
+
+    @Override
     public List<UUID> findCourseIdsBySchoolId(UUID schoolId) {
         return courseRepository.findBySchoolIdAndDeletedAtIsNull(schoolId).stream()
                 .map(Course::getId)

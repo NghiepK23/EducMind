@@ -10,10 +10,13 @@ import com.educmind.assignment.entity.Assignment;
 import com.educmind.assignment.entity.AssignmentSubmission;
 import com.educmind.assignment.repository.AssignmentRepository;
 import com.educmind.assignment.repository.AssignmentSubmissionRepository;
+import com.educmind.common.event.AssignmentGradedEvent;
+import com.educmind.common.event.AssignmentPublishedEvent;
 import com.educmind.common.exception.BusinessException;
 import com.educmind.common.port.CourseAccessPort;
 import com.educmind.common.port.LearningEvidencePort;
 import com.educmind.common.port.UserLookupPort;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -54,12 +57,15 @@ public class AssignmentService {
     private final CourseAccessPort courseAccessPort;
     private final UserLookupPort userLookupPort;
     private final LearningEvidencePort learningEvidencePort;
+    private final ApplicationEventPublisher eventPublisher;
 
     public AssignmentService(AssignmentRepository assignmentRepository,
                               AssignmentSubmissionRepository submissionRepository,
                               CourseAccessPort courseAccessPort,
                               UserLookupPort userLookupPort,
-                              LearningEvidencePort learningEvidencePort) {
+                              LearningEvidencePort learningEvidencePort,
+                              ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
         this.assignmentRepository = assignmentRepository;
         this.submissionRepository = submissionRepository;
         this.courseAccessPort = courseAccessPort;
@@ -156,6 +162,8 @@ public class AssignmentService {
 
         assignment.publish();
         assignment = assignmentRepository.saveAndFlush(assignment);
+        eventPublisher.publishEvent(new AssignmentPublishedEvent(assignment.getId(),
+                assignment.getCourseId(), assignment.getTitle()));
         return toResponse(assignment);
     }
 
@@ -266,6 +274,9 @@ public class AssignmentService {
         submission.grade(request.getScore(), request.getFeedback(), actorId);
         submission = submissionRepository.save(submission);
         if (submission.getScore() != null) {
+            eventPublisher.publishEvent(new AssignmentGradedEvent(submission.getId(),
+                    assignment.getId(), assignment.getCourseId(), submission.getStudentId(),
+                    assignment.getTitle(), submission.getScore(), assignment.getMaxScore()));
             try {
                 learningEvidencePort.onAssignmentGraded(submission.getId(), submission.getScore(),
                         assignment.getMaxScore());

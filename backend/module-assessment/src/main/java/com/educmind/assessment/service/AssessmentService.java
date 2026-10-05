@@ -21,9 +21,11 @@ import com.educmind.assessment.repository.AssessmentQuestionRepository;
 import com.educmind.assessment.repository.AssessmentRepository;
 import com.educmind.assessment.repository.QuestionRepository;
 import com.educmind.assessment.repository.SubmissionAnswerRepository;
+import com.educmind.common.event.AssessmentGradedEvent;
 import com.educmind.common.exception.BusinessException;
 import com.educmind.common.port.CourseAccessPort;
 import com.educmind.common.port.LearningEvidencePort;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -65,6 +67,7 @@ public class AssessmentService {
     private final QuestionRepository questionRepository;
     private final CourseAccessPort courseAccessPort;
     private final LearningEvidencePort learningEvidencePort;
+    private final ApplicationEventPublisher eventPublisher;
 
     public AssessmentService(AssessmentRepository assessmentRepository,
                               AssessmentQuestionRepository assessmentQuestionRepository,
@@ -72,7 +75,9 @@ public class AssessmentService {
                               SubmissionAnswerRepository answerRepository,
                               QuestionRepository questionRepository,
                               CourseAccessPort courseAccessPort,
-                              LearningEvidencePort learningEvidencePort) {
+                              LearningEvidencePort learningEvidencePort,
+                              ApplicationEventPublisher eventPublisher) {
+        this.eventPublisher = eventPublisher;
         this.assessmentRepository = assessmentRepository;
         this.assessmentQuestionRepository = assessmentQuestionRepository;
         this.attemptRepository = attemptRepository;
@@ -255,7 +260,11 @@ public class AssessmentService {
 
         attempt = attemptRepository.save(attempt);
         if (gradedNow) {
-            publishAttemptEvidence(attempt, loadAssessmentOrThrow(attempt.getAssessmentId()).getCourseId());
+            UUID gradedCourseId = loadAssessmentOrThrow(attempt.getAssessmentId()).getCourseId();
+            publishAttemptEvidence(attempt, gradedCourseId);
+            eventPublisher.publishEvent(new AssessmentGradedEvent(attempt.getId(),
+                    attempt.getAssessmentId(), gradedCourseId, attempt.getStudentId(),
+                    attempt.getTotalScore()));
         }
         return toAttemptResponse(attempt);
     }
@@ -304,6 +313,9 @@ public class AssessmentService {
             attempt = attemptRepository.save(attempt);
             if (!wasGraded) {
                 publishAttemptEvidence(attempt, assessment.getCourseId());
+                eventPublisher.publishEvent(new AssessmentGradedEvent(attempt.getId(),
+                        attempt.getAssessmentId(), assessment.getCourseId(), attempt.getStudentId(),
+                        attempt.getTotalScore()));
             }
         }
 

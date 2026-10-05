@@ -4,6 +4,8 @@ import com.educmind.analytics.entity.KnowledgeGap;
 import com.educmind.analytics.entity.Recommendation;
 import com.educmind.analytics.repository.RecommendationRepository;
 import com.educmind.common.port.LessonAccessPort;
+import com.educmind.common.event.RecommendationCreatedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
@@ -20,13 +22,16 @@ public class RecommendationService {
     private final RecommendationRepository recommendationRepository;
     private final RecommendationProperties properties;
     private final LessonAccessPort lessonAccessPort;
+    private final ApplicationEventPublisher eventPublisher;
 
     public RecommendationService(RecommendationRepository recommendationRepository,
                                  RecommendationProperties properties,
-                                 LessonAccessPort lessonAccessPort) {
+                                 LessonAccessPort lessonAccessPort,
+                                 ApplicationEventPublisher eventPublisher) {
         this.recommendationRepository = recommendationRepository;
         this.properties = properties;
         this.lessonAccessPort = lessonAccessPort;
+        this.eventPublisher = eventPublisher;
     }
 
     /** Goi ngay sau khi 1 gap vua duoc mo. */
@@ -61,7 +66,9 @@ public class RecommendationService {
     private void save(UUID studentId, UUID lessonId, UUID learningObjectiveId, UUID courseId,
                       UUID gapId, String type) {
         UUID resourceId = lessonAccessPort.findLatestResourceIdByLessonId(lessonId).orElse(null);
-        recommendationRepository.save(new Recommendation(studentId, lessonId, learningObjectiveId,
-                courseId, gapId, type, resourceId));
+        Recommendation saved = recommendationRepository.save(new Recommendation(studentId, lessonId,
+                learningObjectiveId, courseId, gapId, type, resourceId));
+        eventPublisher.publishEvent(new RecommendationCreatedEvent(saved.getId(), studentId, courseId,
+                lessonId, learningObjectiveId, type));
     }
 }

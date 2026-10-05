@@ -62,4 +62,12 @@ public interface CourseMemberRepository extends JpaRepository<CourseMember, UUID
             + "AND cm.sourceClassId = :classId AND cm.leftAt IS NULL")
     List<UUID> findActiveStudentIdsByCourseIdAndSourceClassId(
             @Param("courseId") UUID courseId, @Param("classId") UUID classId);
+
+    /**
+     * studentId đang ACTIVE (leftAt IS NULL, memberRole='STUDENT') của 1 course, không lọc lớp —
+     * dùng cho CourseAccessPortImpl.findActiveStudentIdsByCourse() (Module 10 gửi notification).
+     */
+    @Query("SELECT cm.userId FROM CourseMember cm "
+            + "WHERE cm.courseId = :courseId AND cm.memberRole = 'STUDENT' AND cm.leftAt IS NULL")
+    List<UUID> findActiveStudentIdsByCourseId(@Param("courseId") UUID courseId);
 }

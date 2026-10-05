@@ -5,6 +5,8 @@ import com.educmind.analytics.entity.Recommendation;
 import com.educmind.analytics.repository.KnowledgeGapRepository;
 import com.educmind.analytics.repository.RecommendationRepository;
 import com.educmind.common.port.LearningEvidencePort;
+import com.educmind.common.event.RecommendationCreatedEvent;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,13 +31,16 @@ public class ReattemptRecommendationService {
     private final KnowledgeGapRepository gapRepository;
     private final RecommendationRepository recommendationRepository;
     private final GapProperties gapProperties;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ReattemptRecommendationService(KnowledgeGapRepository gapRepository,
                                           RecommendationRepository recommendationRepository,
-                                          GapProperties gapProperties) {
+                                          GapProperties gapProperties,
+                                          ApplicationEventPublisher eventPublisher) {
         this.gapRepository = gapRepository;
         this.recommendationRepository = recommendationRepository;
         this.gapProperties = gapProperties;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -76,9 +81,12 @@ public class ReattemptRecommendationService {
                     gapId, Recommendation.TYPE_REATTEMPT_ASSESSMENT, Recommendation.STATUS_ACTIVE)) {
                 continue;
             }
-            recommendationRepository.save(new Recommendation(studentId, g.lessonId(),
-                    g.learningObjectiveId(), courseId, gapId,
+            Recommendation saved = recommendationRepository.save(new Recommendation(studentId,
+                    g.lessonId(), g.learningObjectiveId(), courseId, gapId,
                     Recommendation.TYPE_REATTEMPT_ASSESSMENT, null));
+            eventPublisher.publishEvent(new RecommendationCreatedEvent(saved.getId(), studentId,
+                    courseId, g.lessonId(), g.learningObjectiveId(),
+                    Recommendation.TYPE_REATTEMPT_ASSESSMENT));
         }
     }
 }

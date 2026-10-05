@@ -107,4 +107,12 @@ public interface CourseAccessPort {
      * Dùng cho: Module 5, API SCHOOL_ADMIN xem tổng hợp analytics theo course trong trường mình.
      */
     List<UUID> findCourseIdsBySchoolId(UUID schoolId);
+
+    /**
+     * Danh sách studentId đang ACTIVE (left_at IS NULL, memberRole='STUDENT') của course,
+     * không lọc theo lớp. Rỗng nếu course không có học sinh nào (hoặc không tồn tại).
+     *
+     * Dùng cho: Module 10, xác định người nhận notification khi publish assignment/assessment.
+     */
+    List<UUID> findActiveStudentIdsByCourse(UUID courseId);
 }

@@ -24,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AssessmentServiceAutoScoringTest {
 
     private final AssessmentService service =
-            new AssessmentService(null, null, null, null, null, null, null);
+            new AssessmentService(null, null, null, null, null, null, null, null);
 
     // ---- isAnswerCorrect ----
 
