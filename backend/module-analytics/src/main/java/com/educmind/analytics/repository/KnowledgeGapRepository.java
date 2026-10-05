@@ -4,8 +4,11 @@ import com.educmind.analytics.entity.KnowledgeGap;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -35,4 +38,16 @@ public interface KnowledgeGapRepository extends JpaRepository<KnowledgeGap, UUID
 
     Page<KnowledgeGap> findByCourseIdAndStudentIdInAndStatus(
             UUID courseId, Collection<UUID> studentIds, String status, Pageable pageable);
+
+    /** Dòng đếm gap OPEN theo course cho API SCHOOL_ADMIN (không có thông tin từng học sinh). */
+    interface CourseOpenGapRow {
+        UUID getCourseId();
+        Long getOpenCount();
+    }
+
+    /** Caller phải đảm bảo courseIds không rỗng. Course không có gap OPEN sẽ không có dòng nào. */
+    @Query("SELECT g.courseId AS courseId, COUNT(g) AS openCount "
+         + "FROM KnowledgeGap g WHERE g.courseId IN :courseIds AND g.status = 'OPEN' "
+         + "GROUP BY g.courseId")
+    List<CourseOpenGapRow> countOpenByCourseIds(@Param("courseIds") Collection<UUID> courseIds);
 }

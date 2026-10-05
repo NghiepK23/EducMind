@@ -51,4 +51,18 @@ public interface MasteryRepository extends JpaRepository<Mastery, UUID> {
 
     /** Mastery của nhiều học sinh trong 1 lesson (1 query, dùng cho mastery-matrix). */
     java.util.List<Mastery> findByLessonIdAndStudentIdIn(UUID lessonId, java.util.Collection<UUID> studentIds);
+
+    /** Dòng tổng hợp theo course cho API SCHOOL_ADMIN (không có thông tin từng học sinh). */
+    interface CourseSummaryRow {
+        UUID getCourseId();
+        Long getStudentCount();
+        Double getAvgMastery();
+    }
+
+    /** Caller phải đảm bảo courseIds không rỗng. avgMastery = AVG trên các dòng mastery của course. */
+    @Query("SELECT m.courseId AS courseId, COUNT(DISTINCT m.studentId) AS studentCount, "
+         + "AVG(m.masteryScore) AS avgMastery "
+         + "FROM Mastery m WHERE m.courseId IN :courseIds GROUP BY m.courseId")
+    java.util.List<CourseSummaryRow> summarizeBySchoolCourses(
+            @Param("courseIds") java.util.Collection<UUID> courseIds);
 }

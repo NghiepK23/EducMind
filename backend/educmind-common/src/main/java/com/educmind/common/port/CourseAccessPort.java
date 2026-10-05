@@ -100,4 +100,11 @@ public interface CourseAccessPort {
      * Dùng cho: Module 5, lọc knowledge gap / mastery theo lớp (class_id) ở API giáo viên.
      */
     List<UUID> findActiveStudentIdsByCourseAndSourceClass(UUID courseId, UUID classId);
+
+    /**
+     * Danh sách courseId (chưa soft-delete) thuộc schoolId. Rỗng nếu trường không có course nào.
+     *
+     * Dùng cho: Module 5, API SCHOOL_ADMIN xem tổng hợp analytics theo course trong trường mình.
+     */
+    List<UUID> findCourseIdsBySchoolId(UUID schoolId);
 }
