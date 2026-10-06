@@ -29,6 +29,11 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
 
     long countByRecipientIdAndStatus(UUID recipientId, String status);
 
+    /** Người đã có notification loại này cho đúng entity nguồn (chống trùng DUE_SOON). */
+    @Query("SELECT n.recipientId FROM Notification n "
+            + "WHERE n.type = :type AND n.sourceEntityId = :sourceId")
+    List<UUID> findRecipientIdsBySource(@Param("type") String type, @Param("sourceId") UUID sourceId);
+
     @Modifying
     @Query("UPDATE Notification n SET n.status = 'READ', n.readAt = CURRENT_TIMESTAMP "
             + "WHERE n.recipientId = :uid AND n.status = 'UNREAD'")

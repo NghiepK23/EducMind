@@ -8,6 +8,7 @@ public final class NotificationType {
     public static final String ASSESSMENT_GRADED = "ASSESSMENT_GRADED";
     public static final String KNOWLEDGE_GAP_OPENED = "KNOWLEDGE_GAP_OPENED";
     public static final String RECOMMENDATION_NEW = "RECOMMENDATION_NEW";
+    public static final String ASSIGNMENT_DUE_SOON = "ASSIGNMENT_DUE_SOON";
 
     private NotificationType() {
     }
