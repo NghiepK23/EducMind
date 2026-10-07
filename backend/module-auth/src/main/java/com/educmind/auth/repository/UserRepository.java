@@ -1,8 +1,11 @@
 package com.educmind.auth.repository;
 
 import com.educmind.auth.entity.User;
+import com.educmind.auth.entity.UserStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -17,4 +20,10 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> findByEmail(String email);
 
     boolean existsByEmail(String email);
+
+    List<User> findBySchoolIdAndStatusAndDeletedAtIsNull(UUID schoolId, UserStatus status);
+
+    List<User> findByStatusAndDeletedAtIsNull(UserStatus status);
+
+    List<User> findByIdInAndStatusAndDeletedAtIsNull(Collection<UUID> ids, UserStatus status);
 }

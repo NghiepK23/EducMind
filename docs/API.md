@@ -147,7 +147,30 @@
 | GET | `/api/v1/me/notifications/unread-count` | Không áp dụng |
 | PATCH | `.../notifications/{id}/read`, `.../read-all` | — |
 | GET/PATCH | `/api/v1/me/notification-preferences` | — |
-| POST | `/api/v1/admin/notifications/announce` | SCHOOL_ADMIN/SUPER_ADMIN, rate limit TBD |
+| POST | `/api/v1/admin/notifications/announce` | SCHOOL_ADMIN/SUPER_ADMIN, quota 10 announcement/24h/admin |
+
+`POST /api/v1/admin/notifications/announce` (Module 10, J.6.3) nhận body:
+
+```json
+{ "title": "...", "body": "...", "scope": "SCHOOL | CLASS (tùy chọn)", "classId": "UUID (bắt buộc nếu CLASS)", "schoolId": "UUID (chỉ SUPER_ADMIN, với scope=SCHOOL)" }
+```
+
+Trả `201 { "announcementId": "UUID", "deliveredCount": n }`.
+
+| `scope` | Người nhận |
+|---|---|
+| không truyền | `SCHOOL_ADMIN`: mọi tài khoản `ACTIVE` của trường mình. `SUPER_ADMIN`: toàn bộ tài khoản `ACTIVE` |
+| `SCHOOL` | Mọi tài khoản `ACTIVE` của trường. `SCHOOL_ADMIN` dùng trường mình (truyền `schoolId` khác → 403); `SUPER_ADMIN` bắt buộc truyền `schoolId` |
+| `CLASS` | Thành viên đang active của lớp (`left_at IS NULL`, cả STUDENT lẫn TEACHER) cộng `owner_teacher_id`, chỉ tài khoản `ACTIVE`. `SCHOOL_ADMIN` chỉ gửi lớp thuộc trường mình; `SUPER_ADMIN` gửi mọi lớp |
+
+Loại `SYSTEM_ANNOUNCEMENT` vẫn tôn trọng notification preferences (người đã tắt không nhận, không tính vào `deliveredCount`).
+
+| HTTP | Code | Trường hợp |
+|---|---|---|
+| 422 | `INVALID_ANNOUNCEMENT_SCOPE` | `scope` lạ; `scope=CLASS` thiếu `classId`; `SUPER_ADMIN` dùng `scope=SCHOOL` thiếu `schoolId` |
+| 404 | `CLASS_NOT_FOUND` | Lớp không tồn tại hoặc đã soft-delete |
+| 403 | `FORBIDDEN_CLASS_SCOPE` / `FORBIDDEN_SCHOOL_SCOPE` / `SCHOOL_SCOPE_REQUIRED` | `SCHOOL_ADMIN` gửi ngoài trường mình / không thuộc trường nào |
+| 429 | `ANNOUNCEMENT_RATE_LIMITED` | Vượt quota (mặc định 10 announcement/24h/admin, cấu hình `educmind.notification.announcement-daily-limit`). Đếm từ bảng `notifications` theo `payload->>'announced_by'`; announcement có 0 người nhận không để lại dòng nào nên không tính quota |
 
 ### Module 10 — Reports (`module-reports`)
 | Method | Path | Sync/Async |

@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,6 +29,12 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     long findLatestSeq(@Param("uid") UUID uid);
 
     long countByRecipientIdAndStatus(UUID recipientId, String status);
+
+    /** Quota SYSTEM_ANNOUNCEMENT: số announcement khác nhau admin đã gửi kể từ mốc `since`. */
+    @Query(value = "SELECT COUNT(DISTINCT source_entity_id) FROM notifications "
+            + "WHERE type = 'SYSTEM_ANNOUNCEMENT' AND payload ->> 'announced_by' = :actor "
+            + "AND created_at > :since", nativeQuery = true)
+    long countRecentAnnouncementsByActor(@Param("actor") String actor, @Param("since") OffsetDateTime since);
 
     /** Người đã có notification loại này cho đúng entity nguồn (chống trùng DUE_SOON). */
     @Query("SELECT n.recipientId FROM Notification n "

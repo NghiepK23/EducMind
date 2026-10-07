@@ -8,7 +8,10 @@ import com.educmind.schoolclass.repository.ClassMemberRepository;
 import com.educmind.schoolclass.repository.SchoolClassRepository;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -86,6 +89,25 @@ public class ClassAccessPortImpl implements ClassAccessPort {
         return schoolClassRepository.findAccessibleByTeacher(teacherId).stream()
                 .map(SchoolClass::getId)
                 .toList();
+    }
+
+    @Override
+    public Optional<UUID> findSchoolIdOfActiveClass(UUID classId) {
+        return schoolClassRepository.findByIdAndDeletedAtIsNull(classId)
+                .map(SchoolClass::getSchoolId);
+    }
+
+    @Override
+    public List<UUID> findActiveMemberUserIds(UUID classId) {
+        Set<UUID> ids = new LinkedHashSet<>();
+        schoolClassRepository.findByIdAndDeletedAtIsNull(classId)
+                .ifPresent(c -> ids.add(c.getOwnerTeacherId()));
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        classMemberRepository.findByClassIdAndLeftAtIsNull(classId)
+                .forEach(m -> ids.add(m.getUserId()));
+        return List.copyOf(ids);
     }
 
 }

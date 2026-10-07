@@ -77,4 +77,18 @@ public interface ClassAccessPort {
      */
     java.util.List<UUID> findAccessibleClassIdsForTeacher(UUID teacherId);
 
+    /**
+     * school_id của lớp CHƯA bị soft-delete (deleted_at IS NULL); Optional.empty() nếu lớp
+     * không tồn tại hoặc đã bị xóa mềm. Khác findSchoolIdByClassId (không lọc deleted_at).
+     * Dùng cho: SYSTEM_ANNOUNCEMENT scope=CLASS (Module 10, J.6.3).
+     */
+    Optional<UUID> findSchoolIdOfActiveClass(UUID classId);
+
+    /**
+     * userId của mọi thành viên đang active (left_at IS NULL, cả TEACHER lẫn STUDENT)
+     * CỘNG owner_teacher_id của lớp (owner không có dòng class_members). Không trùng lặp.
+     * Rỗng nếu lớp không tồn tại hoặc đã soft-delete.
+     */
+    java.util.List<UUID> findActiveMemberUserIds(UUID classId);
+
 }

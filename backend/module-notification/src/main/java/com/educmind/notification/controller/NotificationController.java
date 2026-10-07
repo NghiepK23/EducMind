@@ -1,17 +1,24 @@
 package com.educmind.notification.controller;
 
 import com.educmind.common.envelope.ApiResponse;
+import com.educmind.notification.dto.AnnouncementRequest;
+import com.educmind.notification.dto.AnnouncementResponse;
 import com.educmind.notification.dto.NotificationPageResult;
 import com.educmind.notification.dto.NotificationResponse;
 import com.educmind.notification.dto.PreferenceRequest;
 import com.educmind.notification.dto.PreferenceResponse;
 import com.educmind.notification.service.NotificationQueryService;
+import com.educmind.notification.service.SystemAnnouncementService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,9 +32,12 @@ import java.util.UUID;
 public class NotificationController {
 
     private final NotificationQueryService service;
+    private final SystemAnnouncementService systemAnnouncementService;
 
-    public NotificationController(NotificationQueryService service) {
+    public NotificationController(NotificationQueryService service,
+                                  SystemAnnouncementService systemAnnouncementService) {
         this.service = service;
+        this.systemAnnouncementService = systemAnnouncementService;
     }
 
     @GetMapping("/api/v1/me/notifications")
@@ -82,5 +92,19 @@ public class NotificationController {
         UUID userId = UUID.fromString(authentication.getName());
         return ResponseEntity.ok(ApiResponse.success(
                 service.setPreference(userId, request.getNotificationType(), request.getEnabled())));
+    }
+
+    /** SCHOOL_ADMIN gửi trong trường của mình; SUPER_ADMIN gửi toàn hệ thống. */
+    @PreAuthorize("hasAnyRole('SCHOOL_ADMIN', 'SUPER_ADMIN')")
+    @PostMapping("/api/v1/admin/notifications/announce")
+    public ResponseEntity<ApiResponse<AnnouncementResponse>> announce(
+            Authentication authentication,
+            @Valid @RequestBody AnnouncementRequest request) {
+        UUID actorId = UUID.fromString(authentication.getName());
+        boolean superAdmin = authentication.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .anyMatch("ROLE_SUPER_ADMIN"::equals);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(systemAnnouncementService.announce(actorId, superAdmin, request)));
     }
 }
