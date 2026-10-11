@@ -19,6 +19,10 @@ public interface LessonAccessPort {
     record ObjectiveInfo(UUID id, String text) {
     }
 
+    /** Thông tin tối thiểu của 1 lesson (phục vụ Module 7 dựng prompt). */
+    record LessonSummary(UUID id, UUID courseId, String title, String description) {
+    }
+
     /**
      * Danh sách objective của lesson. Trả list rỗng nếu lesson không tồn tại,
      * đã bị xóa mềm, hoặc chưa có objective nào.
@@ -41,6 +45,12 @@ public interface LessonAccessPort {
      * course_id của lesson. Optional.empty() nếu lesson không tồn tại hoặc đã bị xóa mềm.
      */
     Optional<UUID> findCourseIdByLessonId(UUID lessonId);
+
+    /**
+    * Tiêu đề + mô tả + courseId của lesson. Optional.empty() nếu lesson không tồn tại
+    * hoặc đã bị xóa mềm.
+    */
+    Optional<LessonSummary> findLessonSummary(UUID lessonId);
 
     /** id resource mới nhất (chưa xóa) của lesson; Optional.empty() nếu lesson chưa có resource nào. */
     Optional<UUID> findLatestResourceIdByLessonId(UUID lessonId);

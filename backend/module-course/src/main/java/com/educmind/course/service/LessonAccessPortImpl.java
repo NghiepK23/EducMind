@@ -76,6 +76,16 @@ public class LessonAccessPortImpl implements LessonAccessPort {
                 .map(r -> r.getId());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Optional<LessonSummary> findLessonSummary(UUID lessonId) {
+        if (lessonId == null) {
+            return Optional.empty();
+        }
+        return lessonRepository.findByIdAndDeletedAtIsNull(lessonId)
+                .map(l -> new LessonSummary(l.getId(), l.getCourseId(), l.getTitle(), l.getDescription()));
+    }
+
     private List<ObjectiveInfo> toObjectiveInfos(Lesson lesson) {
         List<LearningObjective> objectives = lesson.getLearningObjectives();
         if (objectives == null) {

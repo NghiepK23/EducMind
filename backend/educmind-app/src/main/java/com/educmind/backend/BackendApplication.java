@@ -16,7 +16,9 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         "com.educmind.assignment",
         "com.educmind.assessment",
         "com.educmind.analytics",
-        "com.educmind.notification"
+        "com.educmind.notification",
+        "com.educmind.reports",
+        "com.educmind.teacherassistant"
 })
 @EntityScan(basePackages = {
         "com.educmind.auth.entity",
@@ -25,7 +27,9 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         "com.educmind.assignment.entity",
         "com.educmind.assessment.entity",
         "com.educmind.analytics.entity",
-        "com.educmind.notification.entity"
+        "com.educmind.notification.entity",
+        "com.educmind.reports.entity",
+        "com.educmind.teacherassistant.entity"
 })
 @EnableJpaRepositories(basePackages = {
         "com.educmind.auth.repository",
@@ -34,7 +38,9 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         "com.educmind.assignment.repository",
         "com.educmind.assessment.repository",
         "com.educmind.analytics.repository",
-        "com.educmind.notification.repository"
+        "com.educmind.notification.repository",
+        "com.educmind.reports.repository",
+        "com.educmind.teacherassistant.repository"
 })
 public class BackendApplication {
 
