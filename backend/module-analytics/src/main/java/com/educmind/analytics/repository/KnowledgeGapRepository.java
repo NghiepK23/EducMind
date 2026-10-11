@@ -50,4 +50,10 @@ public interface KnowledgeGapRepository extends JpaRepository<KnowledgeGap, UUID
          + "FROM KnowledgeGap g WHERE g.courseId IN :courseIds AND g.status = 'OPEN' "
          + "GROUP BY g.courseId")
     List<CourseOpenGapRow> countOpenByCourseIds(@Param("courseIds") Collection<UUID> courseIds);
+
+    java.util.List<KnowledgeGap> findByStudentIdAndCourseIdOrderByOpenedAtDesc(UUID studentId, UUID courseId);
+
+    long countByCourseIdAndStatus(UUID courseId, String status);
+
+    long countByCourseIdAndStudentIdInAndStatus(UUID courseId, Collection<UUID> studentIds, String status);
 }

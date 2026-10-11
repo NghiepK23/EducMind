@@ -26,4 +26,6 @@ public interface RecommendationRepository extends JpaRepository<Recommendation, 
     Page<Recommendation> findByStudentIdAndCourseIdAndStatusAndReviewStatusIn(
             UUID studentId, UUID courseId, String status, Collection<String> reviewStatuses,
             Pageable pageable);
+
+    java.util.List<Recommendation> findByStudentIdAndCourseIdOrderByCreatedAtDesc(UUID studentId, UUID courseId);
 }

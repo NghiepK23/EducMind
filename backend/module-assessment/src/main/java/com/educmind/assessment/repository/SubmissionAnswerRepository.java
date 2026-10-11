@@ -33,4 +33,13 @@ public interface SubmissionAnswerRepository extends JpaRepository<SubmissionAnsw
      * luôn có is_correct=NULL kể cả sau khi đã chấm điểm xong.
      */
     long countByAttemptIdAndScoreAwardedIsNull(UUID attemptId);
+
+    interface QuestionStatRow {
+        UUID getQuestionId();
+        Long getAnsweredCount();
+        Long getIncorrectCount();
+    }
+
+    @org.springframework.data.jpa.repository.Query("SELECT a.questionId AS questionId, COUNT(a) AS answeredCount, SUM(CASE WHEN a.isCorrect = false THEN 1 ELSE 0 END) AS incorrectCount FROM SubmissionAnswer a WHERE a.attemptId IN :attemptIds AND a.isCorrect IS NOT NULL GROUP BY a.questionId")
+    List<QuestionStatRow> summarizeByAttempts(@org.springframework.data.repository.query.Param("attemptIds") java.util.Collection<UUID> attemptIds);
 }
