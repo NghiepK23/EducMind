@@ -36,6 +36,7 @@
         <module>module-assessment</module>
         <module>module-analytics</module>
         <module>module-teacher-assistant</module>
+        <module>module-rag</module>
         <module>module-tutor</module>
         <module>module-personalization</module>
         <module>module-notification</module>
