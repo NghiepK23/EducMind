@@ -18,7 +18,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         "com.educmind.analytics",
         "com.educmind.notification",
         "com.educmind.reports",
-        "com.educmind.teacherassistant"
+        "com.educmind.teacherassistant",
+        "com.educmind.rag"
 })
 @EntityScan(basePackages = {
         "com.educmind.auth.entity",
