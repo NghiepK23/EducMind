@@ -1,5 +1,6 @@
 package com.educmind.notification.listener;
 
+import com.educmind.common.event.AiReviewPendingEvent;
 import com.educmind.common.event.AssessmentGradedEvent;
 import com.educmind.common.event.AssignmentGradedEvent;
 import com.educmind.common.event.AssignmentPublishedEvent;
@@ -166,5 +167,57 @@ class NotificationEventListenerTest {
 
         assertDoesNotThrow(() -> listener.onAssignmentPublished(
                 new AssignmentPublishedEvent(UUID.randomUUID(), courseId, "X")));
+    }
+
+    @Test
+    void aiReviewPending_notifiesOnlyTheTeacher_withLabelAndPayload() {
+        UUID requestId = UUID.randomUUID();
+        UUID teacherId = UUID.randomUUID();
+        UUID courseId = UUID.randomUUID();
+        UUID lessonId = UUID.randomUUID();
+
+        listener.onAiReviewPending(new AiReviewPendingEvent(requestId, teacherId, courseId,
+                lessonId, "LESSON_PLAN"));
+
+        verify(creationService).createForRecipients(eq("AI_REVIEW_PENDING"), eq("AI_REVIEW_PENDING"),
+                eq(requestId), recipientsCaptor.capture(), eq("Nội dung AI đang chờ bạn duyệt"),
+                bodyCaptor.capture(), payloadCaptor.capture());
+        assertEquals(List.of(teacherId), List.copyOf(recipientsCaptor.getValue()));
+        assertEquals("Giáo án do AI sinh đã sẵn sàng, vui lòng xem và duyệt.", bodyCaptor.getValue());
+        assertEquals(courseId.toString(), payloadCaptor.getValue().get("course_id"));
+        assertEquals("ai_generation_request", payloadCaptor.getValue().get("entity_type"));
+        assertEquals(requestId.toString(), payloadCaptor.getValue().get("entity_id"));
+        assertEquals(lessonId.toString(), payloadCaptor.getValue().get("lesson_id"));
+        assertEquals("LESSON_PLAN", payloadCaptor.getValue().get("request_type"));
+    }
+
+    @Test
+    void aiReviewPending_labelsFollowRequestType_andOmitsNullLesson() {
+        UUID questionSetId = UUID.randomUUID();
+        UUID matrixId = UUID.randomUUID();
+
+        listener.onAiReviewPending(new AiReviewPendingEvent(questionSetId, UUID.randomUUID(),
+                UUID.randomUUID(), UUID.randomUUID(), "QUESTION_SET"));
+        listener.onAiReviewPending(new AiReviewPendingEvent(matrixId, UUID.randomUUID(),
+                UUID.randomUUID(), null, "ASSESSMENT_MATRIX"));
+
+        verify(creationService).createForRecipients(eq("AI_REVIEW_PENDING"), eq("AI_REVIEW_PENDING"),
+                eq(questionSetId), anyCollection(), anyString(),
+                eq("Bộ câu hỏi do AI sinh đã sẵn sàng, vui lòng xem và duyệt."), any());
+        verify(creationService).createForRecipients(eq("AI_REVIEW_PENDING"), eq("AI_REVIEW_PENDING"),
+                eq(matrixId), anyCollection(), anyString(),
+                eq("Ma trận đề do AI sinh đã sẵn sàng, vui lòng xem và duyệt."), payloadCaptor.capture());
+        assertFalse(payloadCaptor.getValue().containsKey("lesson_id"));
+    }
+
+    @Test
+    void aiReviewPending_creationFailure_isSwallowed() {
+        doThrow(new RuntimeException("DB down")).when(creationService)
+                .createForRecipients(anyString(), anyString(), any(), anyCollection(), anyString(),
+                        anyString(), any());
+
+        assertDoesNotThrow(() -> listener.onAiReviewPending(new AiReviewPendingEvent(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                "LESSON_PLAN")));
     }
 }
