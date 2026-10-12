@@ -94,6 +94,7 @@ public class AiObservabilityLog {
     public Integer getInputTokens() { return inputTokens; }
     public Integer getOutputTokens() { return outputTokens; }
     public BigDecimal getEstimatedCost() { return estimatedCost; }
+    public void setEstimatedCost(BigDecimal estimatedCost) { this.estimatedCost = estimatedCost; }
     public String getStatus() { return status; }
     public String getErrorMessage() { return errorMessage; }
     public OffsetDateTime getCreatedAt() { return createdAt; }

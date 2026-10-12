@@ -30,17 +30,20 @@ public class GenerationWorker {
     private final AiObservabilityLogRepository logRepository;
     private final AIProvider aiProvider;
     private final LessonAccessPort lessonAccessPort;
+    private final AiCostEstimator costEstimator;
 
     public GenerationWorker(AiGenerationRequestRepository requestRepository,
                             AiGenerationOutputRepository outputRepository,
                             AiObservabilityLogRepository logRepository,
                             AIProvider aiProvider,
-                            LessonAccessPort lessonAccessPort) {
+                            LessonAccessPort lessonAccessPort,
+                            AiCostEstimator costEstimator) {
         this.requestRepository = requestRepository;
         this.outputRepository = outputRepository;
         this.logRepository = logRepository;
         this.aiProvider = aiProvider;
         this.lessonAccessPort = lessonAccessPort;
+        this.costEstimator = costEstimator;
     }
 
     @Async
@@ -85,11 +88,13 @@ public class GenerationWorker {
             throw new IllegalStateException("AI_GENERATION_FAILED (" + e.getCode() + "): " + e.getMessage(), e);
         }
 
-        logRepository.save(new AiObservabilityLog(
+        AiObservabilityLog okLog = new AiObservabilityLog(
                 AiObservabilityLog.CONTEXT_TEACHER_ASSISTANT, req.getId(), req.getRequestedBy(),
                 result.provider(), truncate(result.model(), 50), req.getRequestType(),
                 (int) result.latencyMs(), result.inputTokens(), result.outputTokens(),
-                AiObservabilityLog.STATUS_SUCCESS, null));
+                AiObservabilityLog.STATUS_SUCCESS, null);
+        okLog.setEstimatedCost(costEstimator.estimate(result.inputTokens(), result.outputTokens()));
+        logRepository.save(okLog);
 
         Map<String, Object> content;
         try {
