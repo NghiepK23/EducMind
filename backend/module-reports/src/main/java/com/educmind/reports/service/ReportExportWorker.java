@@ -7,6 +7,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
+import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
 
@@ -20,17 +21,20 @@ public class ReportExportWorker {
     private final ClassProgressReportService classProgressService;
     private final StudentProgressReportService studentProgressService;
     private final AssessmentResultReportService assessmentResultService;
+    private final AiUsageReportService aiUsageService;
 
     public ReportExportWorker(ReportExportRequestRepository repository,
                               ExportFileStorage storage,
                               ClassProgressReportService classProgressService,
                               StudentProgressReportService studentProgressService,
-                              AssessmentResultReportService assessmentResultService) {
+                              AssessmentResultReportService assessmentResultService,
+                              AiUsageReportService aiUsageService) {
         this.repository = repository;
         this.storage = storage;
         this.classProgressService = classProgressService;
         this.studentProgressService = studentProgressService;
         this.assessmentResultService = assessmentResultService;
+        this.aiUsageService = aiUsageService;
     }
 
     @Async
@@ -50,6 +54,8 @@ public class ReportExportWorker {
                         actor, uuid(p, "student_id"), uuid(p, "course_id"));
                 case "ASSESSMENT_RESULT" -> assessmentResultService.generate(
                         actor, uuid(p, "assessment_id"));
+                case "AI_USAGE" -> aiUsageService.generate(
+                        actor, uuid(p, "school_id"), time(p, "period_start"), time(p, "period_end"));
                 default -> throw new IllegalStateException(
                         "Loại báo cáo chưa hỗ trợ xuất file: " + req.getReportType());
             };
@@ -64,6 +70,11 @@ public class ReportExportWorker {
             req.markFailed(e.getMessage());
         }
         repository.save(req);
+    }
+
+    private static OffsetDateTime time(Map<String, Object> p, String key) {
+        Object v = p.get(key);
+        return v == null ? null : OffsetDateTime.parse(v.toString());
     }
 
     private static UUID uuid(Map<String, Object> p, String key) {

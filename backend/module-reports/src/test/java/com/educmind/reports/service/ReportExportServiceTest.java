@@ -1,6 +1,7 @@
 package com.educmind.reports.service;
 
 import com.educmind.common.exception.BusinessException;
+import com.educmind.common.port.UserLookupPort;
 import com.educmind.reports.entity.ReportExportRequest;
 import com.educmind.reports.repository.ReportExportRequestRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertSame;
@@ -27,6 +29,8 @@ class ReportExportServiceTest {
     private ClassProgressReportService classService;
     private StudentProgressReportService studentService;
     private AssessmentResultReportService assessmentService;
+    private AiUsageReportService aiUsageService;
+    private UserLookupPort userLookupPort;
     private ReportExportService service;
 
     private final UUID actor = UUID.randomUUID();
@@ -41,8 +45,10 @@ class ReportExportServiceTest {
         classService = mock(ClassProgressReportService.class);
         studentService = mock(StudentProgressReportService.class);
         assessmentService = mock(AssessmentResultReportService.class);
+        aiUsageService = mock(AiUsageReportService.class);
+        userLookupPort = mock(UserLookupPort.class);
         service = new ReportExportService(repository, worker, mock(ExportFileStorage.class),
-                classService, studentService, assessmentService);
+                classService, studentService, assessmentService, aiUsageService, userLookupPort);
         when(repository.save(any(ReportExportRequest.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
     }
@@ -136,5 +142,58 @@ class ReportExportServiceTest {
         verify(classService).checkAccess(actor, courseId);
         verify(repository).save(any(ReportExportRequest.class));
         verify(worker).process(any());
+    }
+
+    @Test
+    void aiUsage_noAccess_throwsAndNeverSavesOrRunsWorker() {
+        UUID schoolId = UUID.randomUUID();
+        BusinessException ex = forbidden();
+        doThrow(ex).when(aiUsageService).checkAccess(actor, schoolId);
+
+        BusinessException thrown = assertThrows(BusinessException.class, () ->
+                service.create(actor, body("AI_USAGE", "CSV",
+                        Map.of("school_id", schoolId.toString()))));
+
+        assertSame(ex, thrown);
+        verify(repository, never()).save(any());
+        verify(worker, never()).process(any());
+    }
+
+    @Test
+    void aiUsage_withAccess_savesAndRunsWorker() {
+        UUID schoolId = UUID.randomUUID();
+
+        service.create(actor, body("AI_USAGE", "PDF", Map.of("school_id", schoolId.toString())));
+
+        verify(aiUsageService).checkAccess(actor, schoolId);
+        verify(repository).save(any(ReportExportRequest.class));
+        verify(worker).process(any());
+    }
+
+    @Test
+    void aiUsage_reversedPeriod_rejectedBeforeAnyAccessCheck() {
+        UUID schoolId = UUID.randomUUID();
+
+        assertThrows(BusinessException.class, () ->
+                service.create(actor, body("AI_USAGE", "CSV",
+                        Map.of("school_id", schoolId.toString(),
+                                "period_start", "2026-10-11T00:00:00Z",
+                                "period_end", "2026-10-01T00:00:00Z"))));
+
+        verifyNoInteractions(aiUsageService, worker);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void schoolAdmin_cannotExportDetailedReport() {
+        when(userLookupPort.findUserSummary(actor)).thenReturn(Optional.of(
+                new UserLookupPort.UserSummary(actor, "SCHOOL_ADMIN", UUID.randomUUID(), true)));
+
+        assertThrows(BusinessException.class, () ->
+                service.create(actor, body("CLASS_PROGRESS", "CSV",
+                        Map.of("course_id", courseId.toString()))));
+
+        verifyNoInteractions(classService, worker);
+        verify(repository, never()).save(any());
     }
 }

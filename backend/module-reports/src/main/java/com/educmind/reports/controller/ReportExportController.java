@@ -41,7 +41,7 @@ public class ReportExportController {
     }
 
     @PostMapping("/api/v1/reports/export")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER','SCHOOL_ADMIN','SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<ExportStatusResponse>> create(
             Authentication authentication, @RequestBody Map<String, Object> body) {
         UUID actorId = UUID.fromString(authentication.getName());
@@ -51,7 +51,7 @@ public class ReportExportController {
     }
 
     @GetMapping("/api/v1/reports/export/{id}")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER','SCHOOL_ADMIN','SUPER_ADMIN')")
     public ResponseEntity<ApiResponse<ExportStatusResponse>> status(
             Authentication authentication, @PathVariable("id") UUID id) {
         UUID actorId = UUID.fromString(authentication.getName());
@@ -60,7 +60,7 @@ public class ReportExportController {
     }
 
     @GetMapping("/api/v1/reports/export/{id}/download")
-    @PreAuthorize("hasRole('TEACHER')")
+    @PreAuthorize("hasAnyRole('TEACHER','SCHOOL_ADMIN','SUPER_ADMIN')")
     public ResponseEntity<FileSystemResource> download(
             Authentication authentication, @PathVariable("id") UUID id) {
         UUID actorId = UUID.fromString(authentication.getName());

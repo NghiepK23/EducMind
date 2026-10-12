@@ -1,12 +1,15 @@
 package com.educmind.reports.service;
 
 import com.educmind.common.exception.BusinessException;
+import com.educmind.common.port.UserLookupPort;
 import com.educmind.reports.entity.ReportExportRequest;
 import com.educmind.reports.repository.ReportExportRequestRepository;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
+import java.time.OffsetDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,19 +27,25 @@ public class ReportExportService {
     private final ClassProgressReportService classProgressService;
     private final StudentProgressReportService studentProgressService;
     private final AssessmentResultReportService assessmentResultService;
+    private final AiUsageReportService aiUsageService;
+    private final UserLookupPort userLookupPort;
 
     public ReportExportService(ReportExportRequestRepository repository,
                                ReportExportWorker worker,
                                ExportFileStorage storage,
                                ClassProgressReportService classProgressService,
                                StudentProgressReportService studentProgressService,
-                               AssessmentResultReportService assessmentResultService) {
+                               AssessmentResultReportService assessmentResultService,
+                               AiUsageReportService aiUsageService,
+                               UserLookupPort userLookupPort) {
         this.repository = repository;
         this.worker = worker;
         this.storage = storage;
         this.classProgressService = classProgressService;
         this.studentProgressService = studentProgressService;
         this.assessmentResultService = assessmentResultService;
+        this.aiUsageService = aiUsageService;
+        this.userLookupPort = userLookupPort;
     }
 
     public ReportExportRequest create(UUID actorId, Map<String, Object> body) {
@@ -45,10 +54,6 @@ public class ReportExportService {
         if (type == null || (!SUPPORTED.contains(type) && !"AI_USAGE".equals(type))) {
             throw new BusinessException("INVALID_REPORT_TYPE",
                     "report_type không hợp lệ", HttpStatus.UNPROCESSABLE_ENTITY);
-        }
-        if ("AI_USAGE".equals(type)) {
-            throw new BusinessException("REPORT_TYPE_NOT_AVAILABLE",
-                    "Báo cáo AI_USAGE chưa hỗ trợ xuất file", HttpStatus.UNPROCESSABLE_ENTITY);
         }
         if (!List.of("CSV", "PDF").contains(format)) {
             throw new BusinessException("FORMAT_NOT_SUPPORTED",
@@ -69,15 +74,30 @@ public class ReportExportService {
                 requireUuid(scope, "student_id", true);
                 requireUuid(scope, "course_id", true);
             }
+            case "AI_USAGE" -> {
+                requireUuid(scope, "school_id", true);
+                requirePeriod(scope);
+            }
             default -> requireUuid(scope, "assessment_id", true);
         }
         requireUuid(scope, "class_id", false);
 
+        // PATCH 3: SCHOOL_ADMIN chỉ được xuất AI_USAGE, không được xuất báo cáo chi tiết
+        if (!"AI_USAGE".equals(type)) {
+            boolean schoolAdmin = userLookupPort.findUserSummary(actorId)
+                    .map(u -> "SCHOOL_ADMIN".equals(u.role())).orElse(false);
+            if (schoolAdmin) {
+                throw new BusinessException("REPORT_SCOPE_FORBIDDEN",
+                        "SCHOOL_ADMIN chỉ được xuất báo cáo AI_USAGE", HttpStatus.FORBIDDEN);
+            }
+        }
         switch (type) {
             case "CLASS_PROGRESS" -> classProgressService.checkAccess(
                     actorId, uuidOf(scope, "course_id"));
             case "STUDENT_PROGRESS" -> studentProgressService.checkAccess(
                     actorId, uuidOf(scope, "course_id"));
+            case "AI_USAGE" -> aiUsageService.checkAccess(
+                    actorId, uuidOf(scope, "school_id"));
             default -> assessmentResultService.checkAccess(
                     actorId, uuidOf(scope, "assessment_id"));
         }
@@ -108,6 +128,28 @@ public class ReportExportService {
 
     private static String str(Object o) {
         return o == null ? null : o.toString();
+    }
+
+    private static void requirePeriod(Map<String, Object> scope) {
+        OffsetDateTime start = parseTime(scope.get("period_start"), "period_start");
+        OffsetDateTime end = parseTime(scope.get("period_end"), "period_end");
+        if (start != null && end != null && !start.isBefore(end)) {
+            throw new BusinessException("INVALID_PERIOD_RANGE",
+                    "period_start phải trước period_end", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+    }
+
+    private static OffsetDateTime parseTime(Object v, String key) {
+        if (v == null) {
+            return null;
+        }
+        try {
+            return OffsetDateTime.parse(v.toString());
+        } catch (DateTimeParseException e) {
+            throw new BusinessException("INVALID_SCOPE_PARAMS",
+                    key + " không phải thời gian ISO hợp lệ (vd 2026-10-01T00:00:00Z)",
+                    HttpStatus.UNPROCESSABLE_ENTITY);
+        }
     }
 
     private static void requireUuid(Map<String, Object> scope, String key, boolean required) {
