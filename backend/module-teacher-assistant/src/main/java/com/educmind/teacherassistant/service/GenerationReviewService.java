@@ -143,9 +143,14 @@ public class GenerationReviewService {
             if (q == null) {
                 throw invalidEdited("Mỗi câu hỏi phải là một đối tượng");
             }
+            UUID objectiveId = parseUuid(q.get("learning_objective_id"));
+            if (objectiveId != null
+                    && !lessonAccessPort.objectiveBelongsToLesson(req.getLessonId(), objectiveId)) {
+                throw invalidEdited("learning_objective_id không thuộc bài học");
+            }
             drafts.add(new AiQuestionDraft(
                     req.getLessonId(),
-                    parseUuid(q.get("learning_objective_id")),
+                    objectiveId,
                     str(q.get("question_text")),
                     str(q.get("question_type")),
                     str(q.get("difficulty")),
