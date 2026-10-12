@@ -30,7 +30,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         "com.educmind.analytics.entity",
         "com.educmind.notification.entity",
         "com.educmind.reports.entity",
-        "com.educmind.teacherassistant.entity"
+        "com.educmind.teacherassistant.entity",
+        "com.educmind.rag.entity"
 })
 @EnableJpaRepositories(basePackages = {
         "com.educmind.auth.repository",
@@ -41,7 +42,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         "com.educmind.analytics.repository",
         "com.educmind.notification.repository",
         "com.educmind.reports.repository",
-        "com.educmind.teacherassistant.repository"
+        "com.educmind.teacherassistant.repository",
+        "com.educmind.rag.repository"
 })
 public class BackendApplication {
 
