@@ -1,5 +1,6 @@
 package com.educmind.notification.listener;
 
+import com.educmind.common.event.AiReviewPendingEvent;
 import com.educmind.common.event.AssessmentGradedEvent;
 import com.educmind.common.event.AssignmentGradedEvent;
 import com.educmind.common.event.AssignmentPublishedEvent;
@@ -109,6 +110,33 @@ public class NotificationEventListener {
         } catch (Exception ex) {
             LOG.error("Tạo notification RECOMMENDATION_NEW thất bại: recommendation={}", e.recommendationId(), ex);
         }
+    }
+
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void onAiReviewPending(AiReviewPendingEvent e) {
+        try {
+            Map<String, Object> p = payload(e.courseId(), "ai_generation_request", e.requestId(), e.lessonId());
+            p.put("request_type", e.requestType());
+            creationService.createForRecipients(NotificationType.AI_REVIEW_PENDING,
+                    "AI_REVIEW_PENDING", e.requestId(), List.of(e.teacherId()),
+                    "Nội dung AI đang chờ bạn duyệt",
+                    typeLabel(e.requestType()) + " do AI sinh đã sẵn sàng, vui lòng xem và duyệt.", p);
+        } catch (Exception ex) {
+            LOG.error("Tạo notification AI_REVIEW_PENDING thất bại: request={}", e.requestId(), ex);
+        }
+    }
+
+    private static String typeLabel(String requestType) {
+        if (requestType == null) {
+            return "Nội dung";
+        }
+        return switch (requestType) {
+            case "LESSON_PLAN" -> "Giáo án";
+            case "QUESTION_SET" -> "Bộ câu hỏi";
+            case "ASSESSMENT_MATRIX" -> "Ma trận đề";
+            default -> "Nội dung";
+        };
     }
 
     private static Map<String, Object> payload(UUID courseId, String entityType, UUID entityId, UUID lessonId) {

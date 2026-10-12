@@ -10,6 +10,7 @@ public final class NotificationType {
     public static final String RECOMMENDATION_NEW = "RECOMMENDATION_NEW";
     public static final String ASSIGNMENT_DUE_SOON = "ASSIGNMENT_DUE_SOON";
     public static final String SYSTEM_ANNOUNCEMENT = "SYSTEM_ANNOUNCEMENT";
+    public static final String AI_REVIEW_PENDING = "AI_REVIEW_PENDING";
 
     private NotificationType() {
     }

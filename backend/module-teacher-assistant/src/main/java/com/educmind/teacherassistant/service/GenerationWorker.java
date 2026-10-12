@@ -1,5 +1,6 @@
 package com.educmind.teacherassistant.service;
 
+import com.educmind.common.event.AiReviewPendingEvent;
 import com.educmind.common.port.AIProvider;
 import com.educmind.common.port.AIProviderException;
 import com.educmind.common.port.LessonAccessPort;
@@ -12,6 +13,7 @@ import com.educmind.teacherassistant.repository.AiObservabilityLogRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.json.JsonParserFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -31,19 +33,22 @@ public class GenerationWorker {
     private final AIProvider aiProvider;
     private final LessonAccessPort lessonAccessPort;
     private final AiCostEstimator costEstimator;
+    private final ApplicationEventPublisher eventPublisher;
 
     public GenerationWorker(AiGenerationRequestRepository requestRepository,
                             AiGenerationOutputRepository outputRepository,
                             AiObservabilityLogRepository logRepository,
                             AIProvider aiProvider,
                             LessonAccessPort lessonAccessPort,
-                            AiCostEstimator costEstimator) {
+                            AiCostEstimator costEstimator,
+                            ApplicationEventPublisher eventPublisher) {
         this.requestRepository = requestRepository;
         this.outputRepository = outputRepository;
         this.logRepository = logRepository;
         this.aiProvider = aiProvider;
         this.lessonAccessPort = lessonAccessPort;
         this.costEstimator = costEstimator;
+        this.eventPublisher = eventPublisher;
     }
 
     @Async
@@ -53,13 +58,28 @@ public class GenerationWorker {
             log.error("AI generation request {} không tồn tại", requestId);
             return;
         }
+        boolean succeeded = false;
         try {
             run(req);
+            succeeded = true;
         } catch (Exception e) {
             log.warn("AI generation {} thất bại: {}", requestId, e.getMessage());
             req.markFailed(truncate(e.getMessage(), 1000));
         }
         requestRepository.save(req);
+        if (succeeded) {
+            publishReviewPending(req);
+        }
+    }
+
+    private void publishReviewPending(AiGenerationRequest req) {
+        try {
+            eventPublisher.publishEvent(new AiReviewPendingEvent(
+                    req.getId(), req.getRequestedBy(), req.getCourseId(),
+                    req.getLessonId(), req.getRequestType()));
+        } catch (Exception e) {
+            log.warn("Không phát được AiReviewPendingEvent cho request {}: {}", req.getId(), e.getMessage());
+        }
     }
 
     private void run(AiGenerationRequest req) {
