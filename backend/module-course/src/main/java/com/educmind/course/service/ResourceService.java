@@ -1,5 +1,6 @@
 package com.educmind.course.service;
 
+import com.educmind.common.event.ResourceUploadedEvent;
 import com.educmind.common.exception.BusinessException;
 import com.educmind.common.port.UserLookupPort;
 import com.educmind.course.dto.ResourceResponse;
@@ -9,6 +10,7 @@ import com.educmind.course.entity.PublishStatus;
 import com.educmind.course.entity.Resource;
 import com.educmind.course.repository.LessonRepository;
 import com.educmind.course.repository.ResourceRepository;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -40,6 +42,17 @@ public class ResourceService {
 
     private static final long MAX_FILE_SIZE_BYTES = 52_428_800L; // 50MB — Module 3 mục C.5.6
 
+    /**
+     * Loại file mà module-rag đọc được (PDF, DOCX, TXT, MD). Chỉ các loại này đi qua pipeline RAG
+     * (ở PROCESSING cho tới khi worker xong). Loại khác (ảnh, video, XLSX...) vẫn READY ngay như trước.
+     */
+    private static final Set<String> RAG_PROCESSABLE_MIME_TYPES = Set.of(
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "text/plain",
+            "text/markdown"
+    );
+
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of(
             "application/pdf",
             "application/msword",
@@ -64,17 +77,20 @@ public class ResourceService {
     private final UserLookupPort userLookupPort;
     private final CourseAuthorizationHelper courseAuthorizationHelper;
     private final ResourceStorageService resourceStorageService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ResourceService(ResourceRepository resourceRepository,
                             LessonRepository lessonRepository,
                             UserLookupPort userLookupPort,
                             CourseAuthorizationHelper courseAuthorizationHelper,
-                            ResourceStorageService resourceStorageService) {
+                            ResourceStorageService resourceStorageService,
+                            ApplicationEventPublisher eventPublisher) {
         this.resourceRepository = resourceRepository;
         this.lessonRepository = lessonRepository;
         this.userLookupPort = userLookupPort;
         this.courseAuthorizationHelper = courseAuthorizationHelper;
         this.resourceStorageService = resourceStorageService;
+        this.eventPublisher = eventPublisher;
     }
 
     /** POST /api/v1/lessons/{id}/resources — upload gắn vào 1 lesson cụ thể. */
@@ -200,9 +216,16 @@ public class ResourceService {
                 stored.getStorageKey(),
                 actorId
         );
-        resource.markReady(); // chưa có pipeline xử lý nền thật (Module 6 sẽ đảm nhiệm sau) — coi như sẵn sàng ngay
+        boolean ragProcessable = RAG_PROCESSABLE_MIME_TYPES.contains(file.getContentType());
+        if (!ragProcessable) {
+            resource.markReady(); // loại file RAG không đọc được: sẵn sàng ngay, chỉ không tìm kiếm được
+        }
 
         resource = resourceRepository.save(resource);
+        if (ragProcessable) {
+            // Worker module-rag nhận sự kiện sau khi giao dịch commit rồi mới xử lý nền
+            eventPublisher.publishEvent(new ResourceUploadedEvent(resource.getId()));
+        }
         return toResponse(resource);
     }
 
