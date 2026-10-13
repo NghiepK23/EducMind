@@ -100,6 +100,11 @@ public class Resource {
         this.updatedAt = OffsetDateTime.now();
     }
 
+    /** Đưa về PROCESSING — dùng khi xử lý lại (reprocess) tài liệu cho RAG. */
+    public void markProcessing() {
+        this.processingStatus = ProcessingStatus.PROCESSING;
+    }
+
     /** Đánh dấu xử lý nền xong, file sẵn sàng để download/hiển thị. */
     public void markReady() {
         this.processingStatus = ProcessingStatus.READY;
