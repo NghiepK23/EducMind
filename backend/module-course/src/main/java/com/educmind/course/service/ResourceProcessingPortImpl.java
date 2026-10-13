@@ -62,6 +62,13 @@ public class ResourceProcessingPortImpl implements ResourceProcessingPort {
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public Optional<String> findProcessingStatus(UUID resourceId) {
+        return resourceRepository.findByIdAndDeletedAtIsNull(resourceId)
+                .map(r -> r.getProcessingStatus().name());
+    }
+
+    @Override
     @Transactional
     public void markProcessing(UUID resourceId) {
         update(resourceId, Resource::markProcessing);

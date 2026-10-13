@@ -22,6 +22,9 @@ public interface ResourceProcessingPort {
      */
     InputStream openContent(UUID resourceId);
 
+    /** Trạng thái xử lý hiện tại (PROCESSING, READY, FAILED). Rỗng nếu resource không tồn tại hoặc đã xóa mềm. */
+    Optional<String> findProcessingStatus(UUID resourceId);
+
     /** Đưa resource về PROCESSING (dùng khi xử lý lại). */
     void markProcessing(UUID resourceId);
 
