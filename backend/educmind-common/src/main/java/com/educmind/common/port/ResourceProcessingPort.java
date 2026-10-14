@@ -1,6 +1,7 @@
 package com.educmind.common.port;
 
 import java.io.InputStream;
+import java.time.Duration;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -27,6 +28,13 @@ public interface ResourceProcessingPort {
 
     /** Đưa resource về PROCESSING (dùng khi xử lý lại). */
     void markProcessing(UUID resourceId);
+
+    /**
+     * Đổi sang PROCESSING để bắt đầu xử lý lại, nhưng chỉ khi resource chưa bị xóa và
+     * (không đang PROCESSING, hoặc đang PROCESSING quá lâu so với staleAfter - coi như bị kẹt).
+     * Thao tác nguyên tử: trả true nếu lần gọi này là lần đổi trạng thái được, false nếu không.
+     */
+    boolean tryBeginReprocess(UUID resourceId, Duration staleAfter);
 
     /** Đánh dấu xử lý xong, chunk đã sẵn sàng cho truy xuất. */
     void markReady(UUID resourceId);

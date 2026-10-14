@@ -2,6 +2,7 @@ package com.educmind.course.service;
 
 import com.educmind.common.exception.BusinessException;
 import com.educmind.common.port.ResourceProcessingPort;
+import com.educmind.course.entity.ProcessingStatus;
 import com.educmind.course.entity.Resource;
 import com.educmind.course.repository.ResourceRepository;
 import org.springframework.core.io.FileSystemResource;
@@ -11,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Consumer;
@@ -72,6 +75,14 @@ public class ResourceProcessingPortImpl implements ResourceProcessingPort {
     @Transactional
     public void markProcessing(UUID resourceId) {
         update(resourceId, Resource::markProcessing);
+    }
+
+    @Override
+    @Transactional
+    public boolean tryBeginReprocess(UUID resourceId, Duration staleAfter) {
+        OffsetDateTime now = OffsetDateTime.now();
+        return resourceRepository.tryStartProcessing(
+                resourceId, ProcessingStatus.PROCESSING, now, now.minus(staleAfter)) > 0;
     }
 
     @Override
