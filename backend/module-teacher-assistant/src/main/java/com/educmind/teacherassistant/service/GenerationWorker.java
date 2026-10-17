@@ -133,7 +133,7 @@ public class GenerationWorker {
             throw new IllegalStateException("AI_BAD_RESPONSE: không đọc được JSON AI trả về", e);
         }
 
-        validateContent(req.getRequestType(), content, lessonId);
+        validateContent(req.getRequestType(), content, lessonId, req.getInputParams());
 
         outputRepository.save(new AiGenerationOutput(req.getId(), content, chunkIds));
         req.markCompleted();
@@ -164,7 +164,8 @@ public class GenerationWorker {
         return truncate(sb.toString(), 1000);
     }
 
-    private void validateContent(String type, Map<String, Object> content, UUID lessonId) {
+    private void validateContent(String type, Map<String, Object> content, UUID lessonId,
+                                 Map<String, Object> inputParams) {
         switch (type) {
             case AiGenerationRequest.TYPE_LESSON_PLAN -> {
                 if (!(content.get("activities") instanceof List<?> a) || a.isEmpty()) {
@@ -192,8 +193,44 @@ public class GenerationWorker {
                 for (Map<String, Object> row : rows) {
                     checkObjective(row.get("learning_objective_id"), lessonId);
                 }
+                checkMatrixTotal(rows, expectedTotal(inputParams));
             }
             default -> throw new IllegalStateException("Loại yêu cầu không hợp lệ: " + type);
+        }
+    }
+
+    /** Số câu giáo viên yêu cầu (total_questions); null nếu thiếu hoặc không đọc được. */
+    static Integer expectedTotal(Map<String, Object> inputParams) {
+        if (inputParams == null || inputParams.get("total_questions") == null) {
+            return null;
+        }
+        Object v = inputParams.get("total_questions");
+        if (v instanceof Number n) {
+            return n.intValue();
+        }
+        try {
+            return Integer.parseInt(v.toString());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** Tổng count của mọi dòng ma trận phải bằng số câu yêu cầu. expected null thì bỏ qua kiểm tra. */
+    static void checkMatrixTotal(List<Map<String, Object>> rows, Integer expected) {
+        if (expected == null) {
+            return;
+        }
+        int sum = 0;
+        for (Map<String, Object> row : rows) {
+            if (!(row.get("count") instanceof Number n) || n.intValue() < 0) {
+                throw new IllegalStateException(
+                        "AI_BAD_RESPONSE: dòng ma trận có count không hợp lệ: " + row.get("count"));
+            }
+            sum += n.intValue();
+        }
+        if (sum != expected) {
+            throw new IllegalStateException("AI_BAD_RESPONSE: tổng count của ma trận là " + sum
+                    + ", khác total_questions = " + expected);
         }
     }
 
