@@ -10,12 +10,13 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
  * Bảng ai_generation_outputs — nội dung AI sinh ra + trạng thái duyệt của giáo viên.
- * Cột retrieved_chunk_ids (UUID[]) chưa map vì Module 6 (RAG) chưa có, luôn NULL.
+ * Cột retrieved_chunk_ids (UUID[]) lưu id các đoạn tài liệu (Module 6) đã đưa vào prompt; NULL với output cũ.
  */
 @Entity
 @Table(name = "ai_generation_outputs")
@@ -53,6 +54,10 @@ public class AiGenerationOutput {
     @Column(name = "edited_content", columnDefinition = "jsonb")
     private Map<String, Object> editedContent;
 
+    @JdbcTypeCode(SqlTypes.ARRAY)
+    @Column(name = "retrieved_chunk_ids", columnDefinition = "uuid[]")
+    private List<UUID> retrievedChunkIds;
+
     @Column(name = "applied_at")
     private OffsetDateTime appliedAt;
 
@@ -65,6 +70,11 @@ public class AiGenerationOutput {
     public AiGenerationOutput(UUID requestId, Map<String, Object> content) {
         this.requestId = requestId;
         this.content = content;
+    }
+
+    public AiGenerationOutput(UUID requestId, Map<String, Object> content, List<UUID> retrievedChunkIds) {
+        this(requestId, content);
+        this.retrievedChunkIds = retrievedChunkIds;
     }
 
     public void approve(UUID reviewerId, String notes) {
@@ -96,6 +106,7 @@ public class AiGenerationOutput {
     public UUID getId() { return id; }
     public UUID getRequestId() { return requestId; }
     public Map<String, Object> getContent() { return content; }
+    public List<UUID> getRetrievedChunkIds() { return retrievedChunkIds; }
     public String getReviewStatus() { return reviewStatus; }
     public UUID getReviewedBy() { return reviewedBy; }
     public OffsetDateTime getReviewedAt() { return reviewedAt; }

@@ -4,6 +4,7 @@ import com.educmind.common.event.AiReviewPendingEvent;
 import com.educmind.common.port.AIProvider;
 import com.educmind.common.port.AIProviderException;
 import com.educmind.common.port.LessonAccessPort;
+import com.educmind.common.port.RetrievalPort;
 import com.educmind.teacherassistant.entity.AiGenerationOutput;
 import com.educmind.teacherassistant.entity.AiGenerationRequest;
 import com.educmind.teacherassistant.entity.AiObservabilityLog;
@@ -34,6 +35,7 @@ public class GenerationWorker {
     private final LessonAccessPort lessonAccessPort;
     private final AiCostEstimator costEstimator;
     private final ApplicationEventPublisher eventPublisher;
+    private final RetrievalPort retrievalPort;
 
     public GenerationWorker(AiGenerationRequestRepository requestRepository,
                             AiGenerationOutputRepository outputRepository,
@@ -41,7 +43,8 @@ public class GenerationWorker {
                             AIProvider aiProvider,
                             LessonAccessPort lessonAccessPort,
                             AiCostEstimator costEstimator,
-                            ApplicationEventPublisher eventPublisher) {
+                            ApplicationEventPublisher eventPublisher,
+                            RetrievalPort retrievalPort) {
         this.requestRepository = requestRepository;
         this.outputRepository = outputRepository;
         this.logRepository = logRepository;
@@ -49,6 +52,7 @@ public class GenerationWorker {
         this.lessonAccessPort = lessonAccessPort;
         this.costEstimator = costEstimator;
         this.eventPublisher = eventPublisher;
+        this.retrievalPort = retrievalPort;
     }
 
     @Async
@@ -91,8 +95,14 @@ public class GenerationWorker {
                 .orElseThrow(() -> new IllegalStateException("Bài học không còn tồn tại"));
         List<LessonAccessPort.ObjectiveInfo> objectives = lessonAccessPort.findObjectivesByLessonId(lessonId);
 
+        List<RetrievalPort.RetrievedChunk> chunks = retrieveChunks(req, lesson, objectives);
+        List<UUID> chunkIds = new ArrayList<>();
+        for (RetrievalPort.RetrievedChunk c : chunks) {
+            chunkIds.add(c.chunkId());
+        }
+
         GenerationPromptBuilder.Built built = GenerationPromptBuilder.build(
-                req.getRequestType(), lesson, objectives, req.getInputParams());
+                req.getRequestType(), lesson, objectives, req.getInputParams(), chunks);
 
         long start = System.nanoTime();
         AIProvider.AIResult result;
@@ -125,8 +135,33 @@ public class GenerationWorker {
 
         validateContent(req.getRequestType(), content, lessonId);
 
-        outputRepository.save(new AiGenerationOutput(req.getId(), content));
+        outputRepository.save(new AiGenerationOutput(req.getId(), content, chunkIds));
         req.markCompleted();
+    }
+
+    private List<RetrievalPort.RetrievedChunk> retrieveChunks(AiGenerationRequest req,
+                                                              LessonAccessPort.LessonSummary lesson,
+                                                              List<LessonAccessPort.ObjectiveInfo> objectives) {
+        try {
+            return retrievalPort.search(req.getCourseId(), req.getLessonId(),
+                    buildRetrievalQuery(lesson, objectives));
+        } catch (Exception e) {
+            log.warn("Truy xuất tài liệu cho request {} lỗi, vẫn sinh nội dung không có đoạn trích: {}",
+                    req.getId(), e.getMessage());
+            return List.of();
+        }
+    }
+
+    static String buildRetrievalQuery(LessonAccessPort.LessonSummary lesson,
+                                      List<LessonAccessPort.ObjectiveInfo> objectives) {
+        StringBuilder sb = new StringBuilder(lesson.title());
+        if (lesson.description() != null && !lesson.description().isBlank()) {
+            sb.append(". ").append(lesson.description());
+        }
+        for (LessonAccessPort.ObjectiveInfo o : objectives) {
+            sb.append(". ").append(o.text());
+        }
+        return truncate(sb.toString(), 1000);
     }
 
     private void validateContent(String type, Map<String, Object> content, UUID lessonId) {
