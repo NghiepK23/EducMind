@@ -2,6 +2,7 @@ package com.educmind.teacherassistant.service;
 
 import com.educmind.common.event.AiReviewPendingEvent;
 import com.educmind.common.port.AIProvider;
+import com.educmind.common.port.AIProviderException;
 import com.educmind.common.port.LessonAccessPort;
 import com.educmind.common.port.RetrievalPort;
 import com.educmind.teacherassistant.entity.AiGenerationOutput;
@@ -193,6 +194,28 @@ class GenerationWorkerProcessTest {
         assertThat(req.getStatus()).isEqualTo(AiGenerationRequest.STATUS_FAILED);
         assertThat(req.getErrorMessage()).contains("Bài học không còn tồn tại");
         verifyNoInteractions(aiProvider, outputRepository, eventPublisher);
+    }
+
+    @Test
+    void aiNemLoi_failed_ghiLogFailed_khongLuuOutput_khongPhatEvent() {
+        AiGenerationRequest req = request(AiGenerationRequest.TYPE_QUESTION_SET, Map.of("count", 1));
+        lessonOk();
+        when(retrievalPort.search(any(), any(), anyString())).thenReturn(List.of());
+        when(aiProvider.generate(any())).thenThrow(new AIProviderException("AI_RATE_LIMITED", "hết hạn mức"));
+
+        worker.process(requestId);
+
+        assertThat(req.getStatus()).isEqualTo(AiGenerationRequest.STATUS_FAILED);
+        assertThat(req.getErrorMessage()).contains("AI_GENERATION_FAILED").contains("AI_RATE_LIMITED");
+
+        ArgumentCaptor<AiObservabilityLog> logCaptor = ArgumentCaptor.forClass(AiObservabilityLog.class);
+        verify(logRepository, times(1)).save(logCaptor.capture());
+        assertThat(logCaptor.getValue().getStatus()).isEqualTo(AiObservabilityLog.STATUS_FAILED);
+        assertThat(logCaptor.getValue().getErrorMessage()).contains("AI_RATE_LIMITED");
+        assertThat(logCaptor.getValue().getModel()).isEqualTo("unknown");
+
+        verify(outputRepository, never()).save(any());
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
