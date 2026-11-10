@@ -2,33 +2,31 @@ package com.educmind.analytics.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Entity ứng với bảng `learning_evidence` — V7__module_analytics_tables.sql,
- * Module05_LearningEvidence_Analytics_FINAL.md mục 3.1 / 4.1 / 4.2.
+ * Bảng learning_evidence (Spec v2, mục F — bảng 18).
  *
- * Khóa objective là (lessonId, learningObjectiveId). Cả hai cùng null = evidence "chung"
- * (không tính vào mastery per-objective). learningObjectiveId khác null thì lessonId bắt buộc
- * khác null (CHECK ở DB). Không có FK cứng tới objective vì nó nằm trong JSONB của lessons.
- *
- * Append-only, trừ đúng 1 ngoại lệ: {@link #updateScore(BigDecimal, BigDecimal)} khi giáo viên
- * chấm assignment sau khi evidence đã được tạo (spec mục 4.1).
+ * Mỗi dòng = một mục tiêu học tập mà học sinh đạt được sau một bài nộp/bài kiểm tra.
+ * DB có UNIQUE (student_id, objective_id, source_type, source_id) và trigger kiểm tra
+ * nguồn có thật → tầng ứng dụng chỉ cần ghi/ghi đè điểm.
  */
 @Entity
 @Table(name = "learning_evidence")
 public class LearningEvidence {
-
-    public static final String SOURCE_ASSIGNMENT = "ASSIGNMENT";
-    public static final String SOURCE_ASSESSMENT = "ASSESSMENT";
-    public static final String SOURCE_REASSESSMENT = "REASSESSMENT";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -37,68 +35,56 @@ public class LearningEvidence {
     @Column(name = "student_id", nullable = false)
     private UUID studentId;
 
-    @Column(name = "class_id", nullable = false)
-    private UUID classId;
+    @Column(name = "objective_id", nullable = false)
+    private UUID objectiveId;
 
-    @Column(name = "course_id", nullable = false)
-    private UUID courseId;
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "source_type", nullable = false)
+    private EvidenceSource sourceType;
 
-    @Column(name = "lesson_id")
-    private UUID lessonId;
-
-    @Column(name = "learning_objective_id")
-    private UUID learningObjectiveId;
-
-    @Column(name = "source_type", nullable = false, length = 20)
-    private String sourceType;
-
+    /** ASSIGNMENT → id bài nộp; ASSESSMENT → id bài kiểm tra. */
     @Column(name = "source_id", nullable = false)
     private UUID sourceId;
 
-    @Column(nullable = false, precision = 5, scale = 4)
+    @Column(nullable = false, precision = 4, scale = 3)
     private BigDecimal score;
 
-    @Column(name = "raw_score", precision = 6, scale = 2)
-    private BigDecimal rawScore;
-
-    @Column(nullable = false, precision = 3, scale = 2)
-    private BigDecimal weight = new BigDecimal("1.00");
-
-    @Column(name = "occurred_at", nullable = false)
-    private OffsetDateTime occurredAt;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
     protected LearningEvidence() {
     }
 
-    public LearningEvidence(UUID studentId, UUID classId, UUID courseId,
-                            UUID lessonId, UUID learningObjectiveId,
-                            String sourceType, UUID sourceId,
-                            BigDecimal score, BigDecimal rawScore,
-                            OffsetDateTime occurredAt) {
+    public LearningEvidence(UUID studentId, UUID objectiveId, EvidenceSource sourceType,
+                            UUID sourceId, BigDecimal score) {
         this.studentId = studentId;
-        this.classId = classId;
-        this.courseId = courseId;
-        this.lessonId = lessonId;
-        this.learningObjectiveId = learningObjectiveId;
+        this.objectiveId = objectiveId;
         this.sourceType = sourceType;
         this.sourceId = sourceId;
         this.score = score;
-        this.rawScore = rawScore;
-        this.occurredAt = occurredAt;
-        this.createdAt = OffsetDateTime.now();
     }
 
-    /** Ngoại lệ append-only duy nhất (spec 4.1): cập nhật điểm sau khi giáo viên chấm assignment. */
-    public void updateScore(BigDecimal score, BigDecimal rawScore) {
-        this.score = score;
-        this.rawScore = rawScore;
-        this.updatedAt = OffsetDateTime.now();
+    @PrePersist
+    void onCreate() {
+        OffsetDateTime now = OffsetDateTime.now();
+        if (createdAt == null) {
+            createdAt = now;
+        }
+        updatedAt = now;
+    }
+
+    @PreUpdate
+    void onUpdate() {
+        updatedAt = OffsetDateTime.now();
+    }
+
+    /** Chấm lại: cập nhật điểm của chính bằng chứng cũ (AC-T04.4). */
+    public void updateScore(BigDecimal newScore) {
+        this.score = newScore;
     }
 
     public UUID getId() {
@@ -109,23 +95,11 @@ public class LearningEvidence {
         return studentId;
     }
 
-    public UUID getClassId() {
-        return classId;
+    public UUID getObjectiveId() {
+        return objectiveId;
     }
 
-    public UUID getCourseId() {
-        return courseId;
-    }
-
-    public UUID getLessonId() {
-        return lessonId;
-    }
-
-    public UUID getLearningObjectiveId() {
-        return learningObjectiveId;
-    }
-
-    public String getSourceType() {
+    public EvidenceSource getSourceType() {
         return sourceType;
     }
 
@@ -135,18 +109,6 @@ public class LearningEvidence {
 
     public BigDecimal getScore() {
         return score;
-    }
-
-    public BigDecimal getRawScore() {
-        return rawScore;
-    }
-
-    public BigDecimal getWeight() {
-        return weight;
-    }
-
-    public OffsetDateTime getOccurredAt() {
-        return occurredAt;
     }
 
     public OffsetDateTime getCreatedAt() {

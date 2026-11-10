@@ -75,7 +75,30 @@
 | GET | `/api/v1/resources/{id}/download` | cả hai | trả tệp nhị phân + `Content-Disposition` |
 | DELETE | `/api/v1/resources/{id}` | TEACHER | xoá mềm bản ghi + xoá tệp |
 
-## 5. Thông báo (US-G03)
+## 5. Bài tập (US-T03, US-T04, US-S02, US-S04, US-S07)
+
+| Method | Path | Quyền | Ghi chú |
+|---|---|---|---|
+| POST | `/api/v1/courses/{courseId}/assignments` | TEACHER | `{title, description, dueDate, maxScore, allowLate, lateCloseDate?, topicId?, lessonId?, objectiveIds[]}`; tạo ở `DRAFT` |
+| GET | `/api/v1/courses/{courseId}/assignments` | cả hai | học sinh chỉ thấy bài `PUBLISHED` thuộc chủ đề/bài học đã xuất bản |
+| GET | `/api/v1/assignments/{id}` | cả hai | |
+| PATCH | `/api/v1/assignments/{id}` | TEACHER | khoá `maxScore` khi đã có bài chấm (AC-T11.2); `scopeType`=COURSE/TOPIC/LESSON để đổi phạm vi |
+| DELETE | `/api/v1/assignments/{id}` | TEACHER | xoá mềm, giữ bài nộp + điểm (AC-T12.3/12.4) |
+| POST | `/api/v1/assignments/{id}/publish` | TEACHER | hạn nộp trong quá khứ → 422 (AC-T03.3) |
+| POST | `/api/v1/assignments/{id}/unpublish` | TEACHER | đã có bài chấm → 409 |
+| GET | `/api/v1/assignments/{id}/submissions` | TEACHER | **roster**: mọi học sinh của lớp, kể cả chưa nộp (AC-T04.1) |
+| PATCH | `/api/v1/submissions/{id}/grade` | TEACHER | `{score, feedback}`; 0 ≤ score ≤ maxScore (AC-T04.2); chấm lại cập nhật bản ghi cũ (AC-T04.4) và ghi `learning_evidence` theo mục tiêu (AC-T04.3) |
+| POST | `/api/v1/assignments/{id}/submission` | STUDENT | `{textContent?, fileUrl?}` — phải có ít nhất một (AC-S02.3); đã nộp → 409 |
+| PATCH | `/api/v1/assignments/{id}/submission` | STUDENT | sửa khi chưa chấm và còn hạn (AC-S07.1/2/3/5) |
+| GET | `/api/v1/assignments/{id}/submission` | STUDENT | kèm `pendingGrade` (AC-S04.1) |
+| DELETE | `/api/v1/assignments/{id}/submission` | STUDENT | xoá mềm; nộp lại = khôi phục bài cũ (AC-S07.4) |
+| POST | `/api/v1/assignments/{id}/submission/attachment` | STUDENT | multipart `file`, ≤ 20MB → trả `fileUrl` để gửi kèm khi nộp |
+| GET | `/api/v1/submissions/{id}/file` | TEACHER (phụ trách) / STUDENT (bài của mình) | tải tệp bài nộp |
+
+Thời hạn nộp: `now ≤ dueDate`, hoặc nếu `allowLate` thì tới `lateCloseDate`; quá hạn → 422 `SUBMISSION_CLOSED`.
+Trạng thái `SUBMITTED`/`LATE` do DB tính lại theo thời điểm nộp/sửa.
+
+## 6. Thông báo (US-G03)
 
 | Method | Path | Ghi chú |
 |---|---|---|
@@ -87,17 +110,17 @@
 > Bản ghi thông báo **do trigger DB sinh** (V7 — J.4) khi: học sinh nộp bài/nộp lại, bài tập được chấm,
 > bài học/bài tập/bài kiểm tra được xuất bản, AI xong/thất bại, có gợi ý mới, có bài kiểm tra cần chấm.
 
-## 6. Mã lỗi đang dùng
+## 7. Mã lỗi đang dùng
 
 | HTTP | `error.code` |
 |---|---|
 | 400 | `INVALID_FILTER`, `RESET_TOKEN_INVALID`, `CURRENT_PASSWORD_INVALID` |
 | 401 | `INVALID_CREDENTIALS`, `TOKEN_EXPIRED` |
-| 403 | `FORBIDDEN`, `NOT_CLASS_OWNER`, `NOT_COURSE_OWNER`, `CLASS_ACCESS_DENIED`, `COURSE_ACCESS_DENIED`, `TOPIC_NOT_PUBLISHED`, `LESSON_NOT_PUBLISHED` |
-| 404 | `NOT_FOUND`, `CLASS_NOT_FOUND`, `USER_NOT_FOUND`, `STUDENT_NOT_IN_CLASS`, `NOTIFICATION_NOT_FOUND` |
+| 403 | `FORBIDDEN`, `NOT_CLASS_OWNER`, `NOT_COURSE_OWNER`, `CLASS_ACCESS_DENIED`, `COURSE_ACCESS_DENIED`, `TOPIC_NOT_PUBLISHED`, `LESSON_NOT_PUBLISHED`, `ASSIGNMENT_NOT_PUBLISHED`, `SUBMISSION_ACCESS_DENIED` |
+| 404 | `NOT_FOUND`, `CLASS_NOT_FOUND`, `USER_NOT_FOUND`, `STUDENT_NOT_IN_CLASS`, `NOTIFICATION_NOT_FOUND`, `SUBMISSION_NOT_FOUND`, `SUBMISSION_HAS_NO_FILE` |
 | 405 | `METHOD_NOT_ALLOWED` |
-| 409 | `EMAIL_ALREADY_EXISTS`, `EMAIL_BELONGS_TO_TEACHER`, `STUDENT_ALREADY_IN_CLASS`, `DUPLICATE_OBJECTIVE_CODE` |
+| 409 | `EMAIL_ALREADY_EXISTS`, `EMAIL_BELONGS_TO_TEACHER`, `STUDENT_ALREADY_IN_CLASS`, `DUPLICATE_OBJECTIVE_CODE`, `MAX_SCORE_LOCKED`, `ASSIGNMENT_HAS_GRADED_SUBMISSIONS`, `SUBMISSION_ALREADY_EXISTS`, `SUBMISSION_ALREADY_GRADED`, `OBJECTIVE_IN_USE` |
 | 413 | `FILE_TOO_LARGE` |
 | 415 | `UNSUPPORTED_FILE_TYPE` |
-| 422 | `VALIDATION_ERROR`, `WEAK_PASSWORD`, `EMPTY_FILE`, `LESSON_HAS_NO_OBJECTIVE`, `TOPIC_NOT_IN_SAME_COURSE` |
+| 422 | `VALIDATION_ERROR`, `WEAK_PASSWORD`, `EMPTY_FILE`, `LESSON_HAS_NO_OBJECTIVE`, `TOPIC_NOT_IN_SAME_COURSE`, `SCOPE_CONFLICT`, `SCOPE_INVALID`, `SCOPE_NOT_IN_COURSE`, `OBJECTIVE_NOT_IN_COURSE`, `LATE_CLOSE_REQUIRED`, `LATE_CLOSE_INVALID`, `DUE_DATE_IN_PAST`, `SUBMISSION_CLOSED`, `SUBMISSION_EMPTY`, `SCORE_OUT_OF_RANGE` |
 | 500 | `INTERNAL_ERROR`, `STORAGE_ERROR` |

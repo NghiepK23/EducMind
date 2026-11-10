@@ -105,6 +105,34 @@ except Exception:
     print("ERR")' "$1"
 }
 
+jobj() {
+  python3 -c 'import json,sys
+try:
+    print(json.load(sys.stdin)["data"][sys.argv[1]])
+except Exception:
+    print("ERR")' "$1"
+}
+
+jfind() {
+  python3 -c 'import json,sys
+key, want = sys.argv[1], sys.argv[2]
+try:
+    items = json.load(sys.stdin)["data"]
+    print([i[key] for i in items if i[key] == want][0])
+except Exception:
+    print("ERR")' "$1" "$2"
+}
+
+jpickfield() {
+  python3 -c 'import json,sys
+field, match_field, match_value = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    items = json.load(sys.stdin)["data"]
+    print([i[field] for i in items if i[match_field] == match_value][0])
+except Exception:
+    print("ERR")' "$1" "$2" "$3"
+}
+
 echo "== EducMind smoke test — $BASE_URL =="
 
 api GET "" /api/health > /dev/null
@@ -171,6 +199,68 @@ check "sai mat khau tra 401" "401" "$(cat "$LAST_STATUS")"
 
 check "hoc sinh doc duoc thong bao" "0" \
   "$(api GET "$STUDENT_TOKEN" /api/v1/me/notifications/unread-count | jsfield unreadCount)"
+
+echo
+echo "== Phase 2: bai tap (US-T03/T04, US-S02/S04/S07) =="
+
+TS="$(date +%s)"
+DUE="$(python3 -c 'import datetime;print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(days=5)).isoformat())')"
+CLOSE="$(python3 -c 'import datetime;print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(days=8)).isoformat())')"
+OBJECTIVE_ID="$(api GET "$TEACHER_TOKEN" "/api/v1/lessons/$PUBLISHED_LESSON/objectives" | jfield 0 id)"
+
+ASSIGNMENT_BODY="$(printf '{"title":"Bai tap smoke %s","description":"Mo ta bai tap","dueDate":"%s","maxScore":10,"allowLate":true,"lateCloseDate":"%s","objectiveIds":["%s"]}' "$TS" "$DUE" "$CLOSE" "$OBJECTIVE_ID")"
+
+api POST "$TEACHER_TOKEN" "/api/v1/courses/$COURSE_ID/assignments" "$ASSIGNMENT_BODY" > /dev/null
+check "giao vien tao bai tap (nhap)" "201" "$(cat "$LAST_STATUS")"
+
+ASSIGNMENT_ID="$(cat "$LAST_BODY" | jobj id)"
+api GET "$TEACHER_TOKEN" "/api/v1/assignments/$ASSIGNMENT_ID" > /dev/null
+check "bai tap moi o trang thai DRAFT" "DRAFT" "$(cat "$LAST_BODY" | jsfield status)"
+
+api POST "$TEACHER_TOKEN" "/api/v1/assignments/$ASSIGNMENT_ID/publish" "" > /dev/null
+check "xuat ban bai tap" "PUBLISHED" "$(cat "$LAST_BODY" | jsfield status)"
+
+api GET "$STUDENT_TOKEN" "/api/v1/courses/$COURSE_ID/assignments" > /dev/null
+check "hoc sinh thay bai tap da xuat ban" "1" "$(python3 -c 'import json,sys
+try:
+    data = json.load(open(sys.argv[1]))["data"]
+    print(1 if len([a for a in data if a["status"] == "PUBLISHED"]) >= 1 else 0)
+except Exception:
+    print("ERR")' "$LAST_BODY")"
+
+api POST "$STUDENT_TOKEN" "/api/v1/assignments/$ASSIGNMENT_ID/submission" '{"textContent":"Bai lam cua hoc sinh"}' > /dev/null
+check "hoc sinh nop bai" "201" "$(cat "$LAST_STATUS")"
+SUBMISSION_ID="$(cat "$LAST_BODY" | jobj id)"
+
+api POST "$STUDENT_TOKEN" "/api/v1/assignments/$ASSIGNMENT_ID/submission" '{"textContent":"nop lan 2"}' > /dev/null
+check "nop lai khi da co bai tra 409" "409" "$(cat "$LAST_STATUS")"
+
+api GET "$TEACHER_TOKEN" "/api/v1/assignments/$ASSIGNMENT_ID/submissions" > /dev/null
+check "danh sach cham co du 5 hoc sinh" "5" "$(cat "$LAST_BODY" | jlen)"
+
+STUDENT_SUBMISSION_ID="$(cat "$LAST_BODY" | jpickfield submissionId studentId "$(api GET "$STUDENT_TOKEN" /api/v1/users/me | jobj id)")"
+
+api PATCH "$TEACHER_TOKEN" "/api/v1/submissions/$STUDENT_SUBMISSION_ID/grade" '{"score":8.5,"feedback":"Tot"}' > /dev/null
+check "giao vien cham diem" "8.5" "$(cat "$LAST_BODY" | jsfield score)"
+
+api PATCH "$TEACHER_TOKEN" "/api/v1/submissions/$STUDENT_SUBMISSION_ID/grade" '{"score":99}' > /dev/null
+check "diem vuot diem toi da tra 422" "422" "$(cat "$LAST_STATUS")"
+
+api GET "$STUDENT_TOKEN" "/api/v1/assignments/$ASSIGNMENT_ID/submission" > /dev/null
+check "hoc sinh thay diem da cham (pendingGrade=false)" "False" "$(cat "$LAST_BODY" | jsfield pendingGrade)"
+
+api PATCH "$STUDENT_TOKEN" "/api/v1/assignments/$ASSIGNMENT_ID/submission" '{"textContent":"sua sau khi cham"}' > /dev/null
+check "sua bai sau khi da cham tra 409" "409" "$(cat "$LAST_STATUS")"
+
+api GET "$TEACHER_TOKEN" /api/v1/me/notifications/unread-count > /dev/null
+check "giao vien nhan thong bao khi co bai nop" "1" "$(python3 -c 'import json,sys
+try:
+    print(1 if json.load(open(sys.argv[1]))["data"]["unreadCount"] >= 1 else 0)
+except Exception:
+    print("ERR")' "$LAST_BODY")"
+
+api DELETE "$TEACHER_TOKEN" "/api/v1/assignments/$ASSIGNMENT_ID" > /dev/null
+check "giao vien xoa bai tap tra 200" "200" "$(cat "$LAST_STATUS")"
 
 echo
 echo "Ket qua: $pass PASS, $fail FAIL"

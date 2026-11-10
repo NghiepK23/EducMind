@@ -9,6 +9,7 @@ import com.educmind.course.entity.Lesson;
 import com.educmind.course.entity.Resource;
 import com.educmind.course.repository.CourseTopicRepository;
 import com.educmind.course.repository.LessonRepository;
+import com.educmind.common.storage.LocalFileStorage;
 import com.educmind.course.repository.ResourceRepository;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpStatus;
@@ -37,13 +38,13 @@ public class ResourceService {
     private final ResourceRepository resourceRepository;
     private final LessonRepository lessonRepository;
     private final CourseTopicRepository topicRepository;
-    private final ResourceStorageService storage;
+    private final LocalFileStorage storage;
     private final CoursePermission permission;
 
     public ResourceService(ResourceRepository resourceRepository,
                            LessonRepository lessonRepository,
                            CourseTopicRepository topicRepository,
-                           ResourceStorageService storage,
+                           LocalFileStorage storage,
                            CoursePermission permission) {
         this.resourceRepository = resourceRepository;
         this.lessonRepository = lessonRepository;
@@ -58,9 +59,9 @@ public class ResourceService {
     @Transactional
     public ResourceResponse uploadToLesson(UUID teacherId, UUID lessonId, MultipartFile file) {
         Lesson lesson = permission.requireManagedLesson(teacherId, lessonId);
-        validate(file);
+        storage.validate(file, ALLOWED_EXTENSIONS, MAX_FILE_SIZE);
 
-        String key = storage.store(lesson.getCourseId(), file);
+        String key = storage.store(lesson.getCourseId().toString(), file);
         Resource resource = new Resource(lesson.getCourseId(), lessonId, safeName(file),
                 key, file.getSize(), contentType(file), teacherId);
         return ResourceResponse.from(resourceRepository.save(resource));
@@ -69,9 +70,9 @@ public class ResourceService {
     @Transactional
     public ResourceResponse uploadToCourse(UUID teacherId, UUID courseId, MultipartFile file) {
         Course course = permission.requireManagedCourse(teacherId, courseId);
-        validate(file);
+        storage.validate(file, ALLOWED_EXTENSIONS, MAX_FILE_SIZE);
 
-        String key = storage.store(course.getId(), file);
+        String key = storage.store(course.getId().toString(), file);
         Resource resource = new Resource(courseId, null, safeName(file),
                 key, file.getSize(), contentType(file), teacherId);
         return ResourceResponse.from(resourceRepository.save(resource));
@@ -152,21 +153,6 @@ public class ResourceService {
         return topicPublished && lesson.getStatus() == ContentStatus.PUBLISHED;
     }
 
-    private void validate(MultipartFile file) {
-        if (file == null || file.isEmpty()) {
-            throw new BusinessException("EMPTY_FILE", "Tệp rỗng", HttpStatus.UNPROCESSABLE_ENTITY);
-        }
-        if (file.getSize() > MAX_FILE_SIZE) {
-            throw new BusinessException("FILE_TOO_LARGE",
-                    "Tệp vượt quá 50MB", HttpStatus.PAYLOAD_TOO_LARGE);
-        }
-        String extension = ResourceStorageService.extensionOf(file.getOriginalFilename());
-        if (!ALLOWED_EXTENSIONS.contains(extension)) {
-            throw new BusinessException("UNSUPPORTED_FILE_TYPE",
-                    "Định dạng tệp không được hỗ trợ: ." + extension, HttpStatus.UNSUPPORTED_MEDIA_TYPE);
-        }
-    }
-
     private String safeName(MultipartFile file) {
         String name = file.getOriginalFilename();
         if (name == null || name.isBlank()) {
@@ -178,7 +164,7 @@ public class ResourceService {
     private String contentType(MultipartFile file) {
         String type = file.getContentType();
         if (type == null || type.isBlank()) {
-            String ext = ResourceStorageService.extensionOf(file.getOriginalFilename());
+            String ext = LocalFileStorage.extensionOf(file.getOriginalFilename());
             return ext.isEmpty() ? "application/octet-stream" : "application/" + ext;
         }
         return type.length() > 50 ? type.substring(0, 50) : type;

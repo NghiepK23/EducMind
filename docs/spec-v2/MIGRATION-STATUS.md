@@ -12,7 +12,7 @@
 | Sinh thông báo | **Trigger DB** (V7 — J.4); tầng Java chỉ đọc/cập nhật trạng thái đã xem |
 | Tiến độ | Làm **Phase 1** trước, review rồi mới sang Phase 2 |
 
-## 2. Phase 1 — ĐÃ XONG
+## 2. Phase 1 + Phase 2A — ĐÃ XONG
 
 ### Schema (Flyway baseline mới, thay toàn bộ V1..V11 cũ)
 
@@ -37,7 +37,10 @@
 | `module-course` | `Course` (class-scoped), `CourseTopic` (US-T02A), `Lesson`, `LearningObjective` (bảng thật), `Resource`; CRUD + publish/unpublish + upload/download tài liệu |
 | `module-notification` | Đọc thông báo, `unread-count`, đánh dấu đã đọc / đọc tất cả (US-G03) |
 | `educmind-common` | Port mới theo mô hình v2: `ClassAccessPort`, `CourseAccessPort`, `UserLookupPort`, `AccountPort`; bỏ toàn bộ port/event của RAG & notification cũ |
-| `educmind-app` | Security 2 role + CORS dev; `application.properties` (JWT_SECRET/DB_PASSWORD qua env); `DevSeedService` + `DevSeedRunner` |
+| `module-assignment` | **Phase 2A**: `Assignment` (phạm vi khóa học/chủ đề/bài học), `AssignmentSubmission` (SUBMITTED/LATE, sửa/xoá/nộp lại), `AssignmentObjective`; tạo–sửa–xoá–xuất bản, roster chấm bài, chấm điểm + ghi bằng chứng |
+| `module-analytics` | **Phase 2A**: chỉ phần `learning_evidence` (`LearningEvidence` + `LearningEvidencePortImpl`) — mastery/lỗ hổng để Phase 3 |
+| `educmind-app` | Security 2 role + CORS dev; `application.properties` (JWT_SECRET/DB_PASSWORD qua env); `DevSeedService` + `DevSeedRunner` (kèm 1 bài tập mẫu đã xuất bản) |
+| `educmind-common` (bổ sung) | `LocalFileStorage` (lưu tệp dùng chung), `CourseContentPort` (chủ đề/bài học/mục tiêu), `LearningEvidencePort` |
 
 ### Đã xoá
 
@@ -49,9 +52,8 @@
 
 | Module | Lý do |
 |---|---|
-| `module-assignment` | Bảng `assignments/assignment_submissions/assignment_objectives` đã có; code cũ dùng `learning_objective_code` chuỗi + `course_members` nên phải viết lại (US-T03, T04, S02, S07) |
-| `module-assessment` | Phải chuyển sang `question_objectives`, JSONB `options/correct_answer`, `max_attempts`, `attempt_number` (US-T05, T06, T13–T15, S03–S04) |
-| `module-analytics` | Khoá chuyển từ `(lesson_id, code)` sang `objective_id`; bỏ `mastery_history` (US-T07, T08, S05, S06, H01) |
+| `module-assessment` | Phải chuyển sang `question_objectives`, JSONB `options/correct_answer`, `max_attempts`, `attempt_number` (US-T05, T06, T13–T15, S03–S04) — **Phase 2B** |
+| `module-analytics` (phần còn lại) | Mastery, lỗ hổng kiến thức, gợi ý (US-T07, T08, S05, S06, H01) — Phase 3; bằng chứng đã có sẵn từ Phase 2A |
 | `module-teacher-assistant` | Chỉ còn sinh câu hỏi nháp + duyệt (US-T09, T10) |
 
 Các module này **không nằm trong `<modules>` của `backend/pom.xml`** và **không phải dependency của
@@ -70,6 +72,8 @@ sau khi đã viết lại code.
 | Spring Data | `Found 10 JPA repository interfaces` |
 | Seed (`EDUCMIND_SEED=true`) | Tạo 1 giáo viên, 5 học sinh, lớp 10A1, khóa Tin học 10 (2 chủ đề, 3 bài, 3 mục tiêu) |
 | Khởi động | Tomcat 8080, không còn user in-memory mặc định |
+| Smoke test Phase 1 | 19/19 PASS (`scripts/smoke-test.sh`) |
+| Phase 2A mới | đã viết code, **chưa chạy** — cần `mvnw clean install` + chạy lại smoke test (31 check) |
 
 Kiểm tra API end-to-end: `./scripts/smoke-test.sh` (health, đăng nhập 2 vai trò, phân quyền
 giáo viên/học sinh, chủ đề nháp bị ẩn với học sinh, 401/403, thông báo).
@@ -84,7 +88,7 @@ thật (Phase 5). Khi nâng cấp từ bản v1 phải `docker compose down -v` 
 |---|---|---|
 | AC-G03.4 | Thông báo trỏ tới nội dung đã xoá phải hiển thị "không còn khả dụng" | 4 |
 | AC-T11.1 | Chặn đổi **mã** mục tiêu khi đã có `learning_evidence` (hiện chặn mọi thay đổi mã) | 3 |
-| US-T03/T04 | Bài tập: phạm vi topic/lesson, cửa sổ nộp trễ, chấm lại | 2 |
+| US-T03/T04 | Bài tập: phạm vi topic/lesson, cửa sổ nộp trễ, chấm lại | ✅ 2A |
 | US-T05–T15 | Ngân hàng câu hỏi, bài kiểm tra, chấm tay, xem lượt làm | 2 |
 | US-T07/T08/S05/S06/H01 | Mastery, lỗ hổng kiến thức, gợi ý | 3 |
 | US-T09/T10 | AI sinh câu hỏi nháp + duyệt | 3 |

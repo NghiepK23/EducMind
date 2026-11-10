@@ -1,5 +1,9 @@
 package com.educmind.backend.seed;
 
+import com.educmind.assignment.entity.Assignment;
+import com.educmind.assignment.entity.AssignmentObjective;
+import com.educmind.assignment.repository.AssignmentObjectiveRepository;
+import com.educmind.assignment.repository.AssignmentRepository;
 import com.educmind.auth.entity.Role;
 import com.educmind.auth.entity.User;
 import com.educmind.auth.repository.UserRepository;
@@ -22,6 +26,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.List;
 
 /**
@@ -40,6 +46,8 @@ public class DevSeedService {
     private final CourseTopicRepository topicRepository;
     private final LessonRepository lessonRepository;
     private final LearningObjectiveRepository objectiveRepository;
+    private final AssignmentRepository assignmentRepository;
+    private final AssignmentObjectiveRepository assignmentObjectiveRepository;
     private final PasswordEncoder passwordEncoder;
 
     public DevSeedService(UserRepository userRepository,
@@ -49,6 +57,8 @@ public class DevSeedService {
                           CourseTopicRepository topicRepository,
                           LessonRepository lessonRepository,
                           LearningObjectiveRepository objectiveRepository,
+                          AssignmentRepository assignmentRepository,
+                          AssignmentObjectiveRepository assignmentObjectiveRepository,
                           PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.classRepository = classRepository;
@@ -57,6 +67,8 @@ public class DevSeedService {
         this.topicRepository = topicRepository;
         this.lessonRepository = lessonRepository;
         this.objectiveRepository = objectiveRepository;
+        this.assignmentRepository = assignmentRepository;
+        this.assignmentObjectiveRepository = assignmentObjectiveRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
@@ -103,9 +115,9 @@ public class DevSeedService {
         lesson1.publish(teacher.getId());
         lesson1 = lessonRepository.save(lesson1);
 
-        objectiveRepository.save(new LearningObjective(lesson1.getId(), "LO01",
+        LearningObjective lo01 = objectiveRepository.save(new LearningObjective(lesson1.getId(), "LO01",
                 "Nêu được khái niệm thông tin và dữ liệu."));
-        objectiveRepository.save(new LearningObjective(lesson1.getId(), "LO02",
+        LearningObjective lo02 = objectiveRepository.save(new LearningObjective(lesson1.getId(), "LO02",
                 "Phân biệt được thông tin với dữ liệu thông qua ví dụ."));
 
         Lesson lesson2 = lessonRepository.save(new Lesson(course.getId(), topic1.getId(),
@@ -120,9 +132,21 @@ public class DevSeedService {
         objectiveRepository.save(new LearningObjective(lesson3.getId(), "LO01",
                 "Kể tên được các thành phần cơ bản của một mạng máy tính."));
 
-        log.info("Seed xong: lớp {} ({}), khóa học '{}' ({} chủ đề, {} bài học). Trạng thái chủ đề 2: {}",
+        // Bài tập mẫu để thử luồng US-T03/T04, US-S02/S04/S07 ngay sau khi seed.
+        OffsetDateTime now = OffsetDateTime.now();
+        Assignment assignment = new Assignment(course.getId(),
+                "Bài tập 1 — Thông tin và dữ liệu",
+                "Trình bày sự khác nhau giữa thông tin và dữ liệu, lấy 3 ví dụ thực tế.",
+                now.plusDays(7), new BigDecimal("10.00"), true, now.plusDays(10));
+        assignment.publish(teacher.getId());
+        assignment = assignmentRepository.save(assignment);
+
+        assignmentObjectiveRepository.save(new AssignmentObjective(assignment.getId(), lo01.getId()));
+        assignmentObjectiveRepository.save(new AssignmentObjective(assignment.getId(), lo02.getId()));
+
+        log.info("Seed xong: lớp {} ({}), khóa học '{}' ({} chủ đề, {} bài học), bài tập '{}' ({} mục tiêu). Trạng thái chủ đề 2: {}",
                 schoolClass.getName(), schoolClass.getId(), course.getTitle(),
-                2, 3, ContentStatus.DRAFT);
+                2, 3, assignment.getTitle(), 2, ContentStatus.DRAFT);
 
         return "SEEDED";
     }
