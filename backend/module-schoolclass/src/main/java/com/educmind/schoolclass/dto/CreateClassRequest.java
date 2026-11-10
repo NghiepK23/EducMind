@@ -1,29 +1,18 @@
 package com.educmind.schoolclass.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
-import java.util.UUID;
-
-/**
- * Request cho POST /api/v1/classes — Module01_Auth_SchoolClass_FINAL.md, mục B.6.
- *
- * ownerTeacherId: tùy chọn ở tầng DTO/validation (@NotBlank không áp dụng cho UUID nên
- * không set ở đây), nhưng BẮT BUỘC về mặt nghiệp vụ khi actor gọi API là SCHOOL_ADMIN —
- * validate điều kiện này ở tầng Service (ClassService), không phải ở DTO, vì phụ thuộc
- * vào role của actor (thông tin chỉ có được sau khi đã xác thực, DTO không biết actor là ai).
- * Khi actor là TEACHER, field này bị BỎ QUA nếu có gửi lên — owner luôn là chính actor đó.
- */
 public class CreateClassRequest {
 
     @NotBlank(message = "Tên lớp không được để trống")
+    @Size(max = 100, message = "Tên lớp tối đa 100 ký tự")
     private String name;
 
-    private String gradeLevel;
+    private Short grade;
 
-    private String academicYear;
-
-    /** Chỉ dùng khi actor là SCHOOL_ADMIN — xem giải thích ở đầu class. */
-    private UUID ownerTeacherId;
+    @Size(max = 20, message = "Năm học tối đa 20 ký tự")
+    private String schoolYear;
 
     public String getName() {
         return name;
@@ -33,27 +22,19 @@ public class CreateClassRequest {
         this.name = name;
     }
 
-    public String getGradeLevel() {
-        return gradeLevel;
+    public Short getGrade() {
+        return grade;
     }
 
-    public void setGradeLevel(String gradeLevel) {
-        this.gradeLevel = gradeLevel;
+    public void setGrade(Short grade) {
+        this.grade = grade;
     }
 
-    public String getAcademicYear() {
-        return academicYear;
+    public String getSchoolYear() {
+        return schoolYear;
     }
 
-    public void setAcademicYear(String academicYear) {
-        this.academicYear = academicYear;
-    }
-
-    public UUID getOwnerTeacherId() {
-        return ownerTeacherId;
-    }
-
-    public void setOwnerTeacherId(UUID ownerTeacherId) {
-        this.ownerTeacherId = ownerTeacherId;
+    public void setSchoolYear(String schoolYear) {
+        this.schoolYear = schoolYear;
     }
 }

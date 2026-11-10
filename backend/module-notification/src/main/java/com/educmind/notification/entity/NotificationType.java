@@ -1,17 +1,16 @@
 package com.educmind.notification.entity;
 
-/** Các loại notification đã có nguồn sự kiện (Module 10 mục J.5.1). */
-public final class NotificationType {
-
-    public static final String ASSIGNMENT_PUBLISHED = "ASSIGNMENT_PUBLISHED";
-    public static final String ASSIGNMENT_GRADED = "ASSIGNMENT_GRADED";
-    public static final String ASSESSMENT_GRADED = "ASSESSMENT_GRADED";
-    public static final String KNOWLEDGE_GAP_OPENED = "KNOWLEDGE_GAP_OPENED";
-    public static final String RECOMMENDATION_NEW = "RECOMMENDATION_NEW";
-    public static final String ASSIGNMENT_DUE_SOON = "ASSIGNMENT_DUE_SOON";
-    public static final String SYSTEM_ANNOUNCEMENT = "SYSTEM_ANNOUNCEMENT";
-    public static final String AI_REVIEW_PENDING = "AI_REVIEW_PENDING";
-
-    private NotificationType() {
-    }
+/** Đúng enum notification_type của Spec v2 (mục B). Thông báo do trigger DB sinh. */
+public enum NotificationType {
+    NEW_SUBMISSION,
+    SUBMISSION_RESUBMITTED,
+    NEW_ASSESSMENT_ATTEMPT_SUBMITTED,
+    AI_GENERATION_COMPLETED,
+    AI_GENERATION_FAILED,
+    NEW_LESSON_PUBLISHED,
+    NEW_ASSIGNMENT_PUBLISHED,
+    NEW_ASSESSMENT_PUBLISHED,
+    ASSIGNMENT_GRADED,
+    ASSESSMENT_GRADED,
+    NEW_RECOMMENDATION
 }

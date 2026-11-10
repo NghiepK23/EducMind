@@ -1,93 +1,73 @@
 package com.educmind.course.service;
 
+import com.educmind.common.exception.BusinessException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.FileSystemResource;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
 /**
- * Chịu trách nhiệm duy nhất: đọc/ghi file vật lý lên storage.
- *
- * Hiện tại dùng filesystem local (chưa có MinIO/S3 — xem Checkpoint #5, mục 8).
- * Khi có Object Storage thật, chỉ cần thay nội dung bên trong class này
- * (store/load), KHÔNG cần sửa ResourceService hay bất kỳ chỗ nào khác — đây là
- * lý do tách riêng thành 1 service độc lập thay vì viết thẳng logic filesystem
- * trong ResourceService.
+ * Ghi/đọc file tài liệu trên đĩa cục bộ (dev). Đường dẫn lưu trong resources.file_url
+ * là khóa tương đối dạng "<courseId>/<uuid>.<ext>" — không bao giờ dùng tên file
+ * người dùng gửi để tránh path traversal.
  */
 @Service
 public class ResourceStorageService {
 
     private final Path basePath;
 
-    public ResourceStorageService(@Value("${educmind.storage.local-base-path}") String localBasePath) {
-        this.basePath = Paths.get(localBasePath).toAbsolutePath().normalize();
+    public ResourceStorageService(
+            @Value("${educmind.storage.local-base-path:./storage/resources}") String basePath) {
+        this.basePath = Paths.get(basePath).toAbsolutePath().normalize();
     }
 
-    /**
-     * Ghi file vào storage, trả về storageKey (đường dẫn tương đối, dùng để load lại sau này)
-     * và số byte thực tế đã ghi (đo trực tiếp khi copy, không tin vào kích thước client khai báo).
-     */
-    public StoredFile store(UUID courseId, String originalFilename, InputStream content) {
-        String storedFilename = UUID.randomUUID() + "_" + sanitizeFilename(originalFilename);
-        String relativeKey = courseId + "/" + storedFilename;
+    public String store(UUID courseId, MultipartFile file) {
+        String extension = extensionOf(file.getOriginalFilename());
+        String key = courseId + "/" + UUID.randomUUID() + (extension.isEmpty() ? "" : "." + extension);
+        Path target = basePath.resolve(key).normalize();
 
-        Path targetDir = basePath.resolve(courseId.toString());
-        Path targetFile = basePath.resolve(relativeKey);
-
-        try {
-            Files.createDirectories(targetDir);
-            long bytesWritten = Files.copy(content, targetFile, StandardCopyOption.REPLACE_EXISTING);
-            return new StoredFile(relativeKey, bytesWritten);
-        } catch (IOException e) {
-            throw new ResourceStorageException("Không thể lưu file vào storage: " + e.getMessage(), e);
+        if (!target.startsWith(basePath)) {
+            throw new BusinessException("INVALID_FILE_PATH", "Đường dẫn tệp không hợp lệ", HttpStatus.BAD_REQUEST);
         }
+        try {
+            Files.createDirectories(target.getParent());
+            file.transferTo(target);
+        } catch (IOException e) {
+            throw new BusinessException("STORAGE_ERROR",
+                    "Không lưu được tệp: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        return key;
     }
 
-    /**
-     * Đọc lại file theo storageKey đã lưu — dùng cho endpoint download.
-     */
-    public FileSystemResource load(String storageKey) {
-        Path file = basePath.resolve(storageKey);
+    public FileSystemResource load(String key) {
+        Path file = basePath.resolve(key).normalize();
+        if (!file.startsWith(basePath) || !Files.exists(file)) {
+            throw new BusinessException("RESOURCE_FILE_MISSING",
+                    "Tệp không còn trên máy chủ", HttpStatus.NOT_FOUND);
+        }
         return new FileSystemResource(file);
     }
 
-    /**
-     * Loại bỏ ký tự path separator khỏi tên file gốc để tránh path traversal
-     * (vd người dùng đặt tên file "../../etc/passwd").
-     */
-    private String sanitizeFilename(String originalFilename) {
-        String name = Paths.get(originalFilename).getFileName().toString();
-        return name.replaceAll("[\\\\/]", "_");
-    }
-
-    public static class StoredFile {
-        private final String storageKey;
-        private final long sizeBytes;
-
-        public StoredFile(String storageKey, long sizeBytes) {
-            this.storageKey = storageKey;
-            this.sizeBytes = sizeBytes;
-        }
-
-        public String getStorageKey() {
-            return storageKey;
-        }
-
-        public long getSizeBytes() {
-            return sizeBytes;
+    public void delete(String key) {
+        try {
+            Files.deleteIfExists(basePath.resolve(key).normalize());
+        } catch (IOException ignored) {
+            // Xóa file lỗi không nên chặn nghiệp vụ xóa mềm bản ghi.
         }
     }
 
-    public static class ResourceStorageException extends RuntimeException {
-        public ResourceStorageException(String message, Throwable cause) {
-            super(message, cause);
+    static String extensionOf(String fileName) {
+        if (fileName == null) {
+            return "";
         }
+        int dot = fileName.lastIndexOf('.');
+        return dot < 0 ? "" : fileName.substring(dot + 1).toLowerCase();
     }
 }

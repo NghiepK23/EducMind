@@ -19,19 +19,13 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.UUID;
 
 /**
- * Module03_Course_Lesson_Resource_FINAL.md, mục C.6, cộng 2 endpoint list
- * [BỔ SUNG NGOÀI SPEC — Checkpoint #6, xem ResourceService].
- *
- * Không dùng @RequestMapping ở class, cùng lý do như LessonController — endpoint trải
- * trên nhiều base path khác nhau (/lessons/{id}/resources, /courses/{id}/resources,
- * /resources/{id}).
- *
- * downloadResource KHÔNG bọc trong ApiResponse — phải trả file nhị phân thật, không phải JSON,
- * nên dùng ResponseEntity<FileSystemResource> trực tiếp kèm header Content-Disposition.
+ * Tài liệu học tập. Endpoint download trả file nhị phân (không bọc ApiResponse) — ngoại lệ
+ * duy nhất của quy ước envelope, giống cách làm cũ.
  */
 @RestController
 public class ResourceController {
@@ -43,100 +37,71 @@ public class ResourceController {
     }
 
     @PreAuthorize("hasRole('TEACHER')")
-    @PostMapping(value = "/api/v1/lessons/{lessonId}/resources", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<ResourceResponse>> createLessonResource(
+    @PostMapping("/api/v1/lessons/{lessonId}/resources")
+    public ResponseEntity<ApiResponse<ResourceResponse>> uploadToLesson(
             Authentication authentication,
             @PathVariable UUID lessonId,
-            @RequestParam("file") MultipartFile file
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        ResourceResponse response = resourceService.createLessonResource(actorId, lessonId, file);
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(ApiResponse.success(response));
+            @RequestParam("file") MultipartFile file) {
+        ResourceResponse response = resourceService.uploadToLesson(
+                Actor.id(authentication), lessonId, file);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
     }
 
     @PreAuthorize("hasRole('TEACHER')")
-    @PostMapping(value = "/api/v1/courses/{courseId}/resources", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<ApiResponse<ResourceResponse>> createCourseResource(
+    @PostMapping("/api/v1/courses/{courseId}/resources")
+    public ResponseEntity<ApiResponse<ResourceResponse>> uploadToCourse(
             Authentication authentication,
             @PathVariable UUID courseId,
-            @RequestParam("file") MultipartFile file
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        ResourceResponse response = resourceService.createCourseResource(actorId, courseId, file);
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(ApiResponse.success(response));
+            @RequestParam("file") MultipartFile file) {
+        ResourceResponse response = resourceService.uploadToCourse(
+                Actor.id(authentication), courseId, file);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
     }
 
-    @PreAuthorize("hasAnyRole('TEACHER', 'SCHOOL_ADMIN', 'STUDENT')")
+    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
     @GetMapping("/api/v1/lessons/{lessonId}/resources")
-    public ResponseEntity<ApiResponse<List<ResourceResponse>>> listLessonResources(
-            Authentication authentication,
-            @PathVariable UUID lessonId
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        List<ResourceResponse> response = resourceService.listLessonResources(actorId, lessonId);
-        return ResponseEntity.ok(ApiResponse.success(response));
+    public ResponseEntity<ApiResponse<List<ResourceResponse>>> listByLesson(
+            Authentication authentication, @PathVariable UUID lessonId) {
+        return ResponseEntity.ok(ApiResponse.success(resourceService.listForLesson(
+                Actor.id(authentication), Actor.role(authentication), lessonId)));
     }
 
-    @PreAuthorize("hasAnyRole('TEACHER', 'SCHOOL_ADMIN', 'STUDENT')")
+    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
     @GetMapping("/api/v1/courses/{courseId}/resources")
-    public ResponseEntity<ApiResponse<List<ResourceResponse>>> listCourseResources(
-            Authentication authentication,
-            @PathVariable UUID courseId
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        List<ResourceResponse> response = resourceService.listCourseResources(actorId, courseId);
-        return ResponseEntity.ok(ApiResponse.success(response));
+    public ResponseEntity<ApiResponse<List<ResourceResponse>>> listByCourse(
+            Authentication authentication, @PathVariable UUID courseId) {
+        return ResponseEntity.ok(ApiResponse.success(resourceService.listForCourse(
+                Actor.id(authentication), Actor.role(authentication), courseId)));
     }
 
-    @PreAuthorize("hasAnyRole('TEACHER', 'SCHOOL_ADMIN', 'STUDENT')")
-    @GetMapping("/api/v1/resources/{id}")
-    public ResponseEntity<ApiResponse<ResourceResponse>> getResourceDetail(
-            Authentication authentication,
-            @PathVariable UUID id
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        ResourceResponse response = resourceService.getResourceDetail(actorId, id);
-        return ResponseEntity.ok(ApiResponse.success(response));
-    }
-
-    @PreAuthorize("hasAnyRole('TEACHER', 'SCHOOL_ADMIN', 'STUDENT')")
+    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
     @GetMapping("/api/v1/resources/{id}/download")
-    public ResponseEntity<FileSystemResource> downloadResource(
-            Authentication authentication,
-            @PathVariable UUID id
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        ResourceService.ResourceDownload download = resourceService.downloadResource(actorId, id);
-
-        ContentDisposition contentDisposition = ContentDisposition.attachment()
-                .filename(download.getFilename())
-                .build();
+    public ResponseEntity<FileSystemResource> download(Authentication authentication,
+                                                       @PathVariable UUID id) {
+        ResourceService.Download download = resourceService.download(
+                Actor.id(authentication), Actor.role(authentication), id);
 
         MediaType mediaType;
         try {
-            mediaType = MediaType.parseMediaType(download.getMimeType());
-        } catch (Exception e) {
+            mediaType = MediaType.parseMediaType(download.contentType());
+        } catch (RuntimeException e) {
             mediaType = MediaType.APPLICATION_OCTET_STREAM;
         }
 
+        ContentDisposition disposition = ContentDisposition.attachment()
+                .filename(download.fileName(), StandardCharsets.UTF_8)
+                .build();
+
         return ResponseEntity.ok()
                 .contentType(mediaType)
-                .header(HttpHeaders.CONTENT_DISPOSITION, contentDisposition.toString())
-                .body(download.getFile());
+                .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+                .body(download.file());
     }
 
     @PreAuthorize("hasRole('TEACHER')")
     @DeleteMapping("/api/v1/resources/{id}")
-    public ResponseEntity<ApiResponse<ResourceResponse>> deleteResource(
-            Authentication authentication,
-            @PathVariable UUID id
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        ResourceResponse response = resourceService.deleteResource(actorId, id);
-        return ResponseEntity.ok(ApiResponse.success(response));
+    public ResponseEntity<ApiResponse<Void>> delete(Authentication authentication, @PathVariable UUID id) {
+        resourceService.delete(Actor.id(authentication), id);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 }

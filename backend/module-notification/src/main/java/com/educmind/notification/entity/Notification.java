@@ -2,95 +2,113 @@ package com.educmind.notification.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
-import java.util.Map;
 import java.util.UUID;
 
-/** Bảng notifications — V8__module_notification.sql, Module 10 mục J.4.1. */
+/**
+ * Bảng notifications (Spec v2, mục H — bảng 25).
+ * Bản ghi do trigger DB sinh (V7, mục J.4); module này chỉ đọc và cập nhật trạng thái đã xem.
+ */
 @Entity
 @Table(name = "notifications")
 public class Notification {
-
-    public static final String STATUS_UNREAD = "UNREAD";
-    public static final String STATUS_READ = "READ";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "recipient_id", nullable = false)
-    private UUID recipientId;
+    @Column(name = "user_id", nullable = false)
+    private UUID userId;
 
-    @Column(nullable = false, length = 40)
-    private String type;
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
+    private NotificationType type;
 
-    @Column(nullable = false, length = 200)
+    @Column(nullable = false, length = 255)
     private String title;
 
-    @Column(nullable = false, length = 1000)
-    private String body;
+    private String content;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(columnDefinition = "jsonb")
-    private Map<String, Object> payload;
+    @Column(name = "related_entity_type", length = 50)
+    private String relatedEntityType;
 
-    @Column(name = "source_event_type", nullable = false, length = 40)
-    private String sourceEventType;
+    @Column(name = "related_entity_id")
+    private UUID relatedEntityId;
 
-    @Column(name = "source_entity_id")
-    private UUID sourceEntityId;
+    @Column(name = "is_read", nullable = false)
+    private boolean read;
 
-    @Column(nullable = false, length = 10)
-    private String status = STATUS_UNREAD;
+    @Column(name = "created_at", nullable = false)
+    private OffsetDateTime createdAt;
 
     @Column(name = "read_at")
     private OffsetDateTime readAt;
 
-    /** Do DB sinh (BIGSERIAL), chỉ đọc — dùng cho cursor polling since_seq. */
-    @Column(name = "sequence_number", insertable = false, updatable = false)
-    private Long sequenceNumber;
-
-    @Column(name = "created_at", nullable = false)
-    private OffsetDateTime createdAt = OffsetDateTime.now();
-
     protected Notification() {
     }
 
-    public Notification(UUID recipientId, String type, String title, String body,
-                        Map<String, Object> payload, String sourceEventType, UUID sourceEntityId) {
-        this.recipientId = recipientId;
-        this.type = type;
-        this.title = title;
-        this.body = body;
-        this.payload = payload;
-        this.sourceEventType = sourceEventType;
-        this.sourceEntityId = sourceEntityId;
+    @PrePersist
+    void onCreate() {
+        if (createdAt == null) {
+            createdAt = OffsetDateTime.now();
+        }
     }
 
     public void markRead() {
-        if (STATUS_UNREAD.equals(status)) {
-            this.status = STATUS_READ;
+        if (!read) {
+            this.read = true;
             this.readAt = OffsetDateTime.now();
         }
     }
 
-    public UUID getId() { return id; }
-    public UUID getRecipientId() { return recipientId; }
-    public String getType() { return type; }
-    public String getTitle() { return title; }
-    public String getBody() { return body; }
-    public Map<String, Object> getPayload() { return payload; }
-    public String getSourceEventType() { return sourceEventType; }
-    public UUID getSourceEntityId() { return sourceEntityId; }
-    public String getStatus() { return status; }
-    public OffsetDateTime getReadAt() { return readAt; }
-    public Long getSequenceNumber() { return sequenceNumber; }
-    public OffsetDateTime getCreatedAt() { return createdAt; }
+    public UUID getId() {
+        return id;
+    }
+
+    public UUID getUserId() {
+        return userId;
+    }
+
+    public NotificationType getType() {
+        return type;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public String getRelatedEntityType() {
+        return relatedEntityType;
+    }
+
+    public UUID getRelatedEntityId() {
+        return relatedEntityId;
+    }
+
+    public boolean isRead() {
+        return read;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public OffsetDateTime getReadAt() {
+        return readAt;
+    }
 }

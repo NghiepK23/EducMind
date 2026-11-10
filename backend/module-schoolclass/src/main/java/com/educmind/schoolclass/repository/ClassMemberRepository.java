@@ -2,6 +2,8 @@ package com.educmind.schoolclass.repository;
 
 import com.educmind.schoolclass.entity.ClassMember;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.List;
 import java.util.Optional;
@@ -9,21 +11,16 @@ import java.util.UUID;
 
 public interface ClassMemberRepository extends JpaRepository<ClassMember, UUID> {
 
-    List<ClassMember> findByClassId(UUID classId);
+    boolean existsByClassIdAndStudentId(UUID classId, UUID studentId);
 
-    List<ClassMember> findByUserId(UUID userId);
+    Optional<ClassMember> findByClassIdAndStudentId(UUID classId, UUID studentId);
 
-    Optional<ClassMember> findByClassIdAndUserId(UUID classId, UUID userId);
+    List<ClassMember> findByClassIdOrderByJoinedAtAsc(UUID classId);
 
-    boolean existsByClassIdAndUserId(UUID classId, UUID userId);
+    List<ClassMember> findByStudentId(UUID studentId);
 
-    /**
-     * [MỚI] Khác existsByClassIdAndUserId ở trên: method cũ trả true kể cả khi user
-     * đã rời lớp (left_at đã set). Method này chỉ true khi đang là thành viên ACTIVE
-     * (left_at IS NULL) — dùng để kiểm tra trước khi cho DELETE /members/{userId}.
-     */
-    boolean existsByClassIdAndUserIdAndLeftAtIsNull(UUID classId, UUID userId);
+    @Query("select m.studentId from ClassMember m where m.classId = :classId")
+    List<UUID> findStudentIdsByClassId(@Param("classId") UUID classId);
 
-    /** [MỚI] Danh sách thành viên đang active của 1 lớp. */
-    List<ClassMember> findByClassIdAndLeftAtIsNull(UUID classId);
+    void deleteByClassIdAndStudentId(UUID classId, UUID studentId);
 }

@@ -1,22 +1,17 @@
 package com.educmind.course.dto;
 
-import jakarta.validation.Valid;
+import jakarta.validation.constraints.Size;
 
-import java.util.List;
+import java.util.UUID;
 
-/**
- * Mọi field nullable — chỉ field nào client gửi (khác null) mới được LessonService
- * cập nhật, theo đúng pattern đã dùng ở UpdateCourseRequest.
- */
 public class UpdateLessonRequest {
 
+    @Size(min = 1, max = 200, message = "Tiêu đề bài học phải từ 1 đến 200 ký tự")
     private String title;
+
     private String description;
 
-    @Valid
-    private List<LearningObjectiveInput> learningObjectives;
-
-    private Integer orderIndex;
+    private UUID topicId;
 
     public String getTitle() {
         return title;
@@ -34,19 +29,11 @@ public class UpdateLessonRequest {
         this.description = description;
     }
 
-    public List<LearningObjectiveInput> getLearningObjectives() {
-        return learningObjectives;
+    public UUID getTopicId() {
+        return topicId;
     }
 
-    public void setLearningObjectives(List<LearningObjectiveInput> learningObjectives) {
-        this.learningObjectives = learningObjectives;
-    }
-
-    public Integer getOrderIndex() {
-        return orderIndex;
-    }
-
-    public void setOrderIndex(Integer orderIndex) {
-        this.orderIndex = orderIndex;
+    public void setTopicId(UUID topicId) {
+        this.topicId = topicId;
     }
 }

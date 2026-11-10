@@ -7,44 +7,38 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.UUID;
 
 /**
- * Sinh và verify JWT access token.
- * TTL access token: [TBD trong spec Module 1, mục A.5] — tạm chốt 15 phút cho môi trường dev,
- * cần xác nhận chính thức trước khi lên production (xem Phase10 Checklist, mục L.5.1).
+ * Sinh và xác thực access token (Spec v2 không có refresh token — xem
+ * docs/spec-v2/03-GAP-ANALYSIS.md mục 6).
  */
 @Service
 public class JwtService {
 
     private final SecretKey secretKey;
-    private final long accessTokenTtlMillis;
+    private final long ttlSeconds;
 
     public JwtService(
             @Value("${educmind.jwt.secret}") String secret,
-            @Value("${educmind.jwt.access-token-ttl-minutes:15}") long accessTokenTtlMinutes
+            @Value("${educmind.jwt.access-token-ttl-minutes:60}") long ttlMinutes
     ) {
-        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes());
-        this.accessTokenTtlMillis = accessTokenTtlMinutes * 60 * 1000;
+        this.secretKey = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        this.ttlSeconds = ttlMinutes * 60;
     }
 
-    public String generateAccessToken(UUID userId, String role, UUID schoolId) {
+    public String generateAccessToken(UUID userId, String role) {
         Date now = new Date();
-        Date expiry = new Date(now.getTime() + accessTokenTtlMillis);
-
-        var builder = Jwts.builder()
+        Date expiry = new Date(now.getTime() + ttlSeconds * 1000);
+        return Jwts.builder()
                 .subject(userId.toString())
                 .claim("role", role)
                 .issuedAt(now)
                 .expiration(expiry)
-                .signWith(secretKey);
-
-        if (schoolId != null) {
-            builder.claim("school_id", schoolId.toString());
-        }
-
-        return builder.compact();
+                .signWith(secretKey)
+                .compact();
     }
 
     public Claims parseAndValidate(String token) {
@@ -59,7 +53,7 @@ public class JwtService {
         return UUID.fromString(parseAndValidate(token).getSubject());
     }
 
-    public String extractRole(String token) {
-        return parseAndValidate(token).get("role", String.class);
+    public long getTtlSeconds() {
+        return ttlSeconds;
     }
 }

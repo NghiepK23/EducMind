@@ -1,16 +1,13 @@
 package com.educmind.auth.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 
-/** Request cho POST /api/v1/auth/password-reset/confirm. */
 public class PasswordResetConfirmRequest {
 
-    @NotBlank(message = "token khong duoc de trong")
+    @NotBlank(message = "Token không được để trống")
     private String token;
 
-    @NotBlank(message = "newPassword khong duoc de trong")
-    @Size(min = 8, message = "mat khau moi phai co it nhat 8 ky tu")
+    @NotBlank(message = "Mật khẩu mới không được để trống")
     private String newPassword;
 
     public String getToken() {

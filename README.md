@@ -1,165 +1,110 @@
-# Software-Technology-Team3
+# EducMind
 
-## Introduction
+Nền tảng học tập thích ứng: giáo viên tổ chức lớp → khóa học → chủ đề → bài học → mục tiêu học tập,
+giao bài tập/bài kiểm tra, xem mức độ nắm kiến thức và lỗ hổng của từng học sinh.
 
-**EducMind** is an AI-integrated Learning Management System (LMS) designed for a single school (MVP scope). It supports three main actors — **School Admin**, **Teacher**, and **Student** — and combines traditional LMS features (course/lesson/resource management, assignments, assessments) with AI-powered capabilities built on top of a Retrieval-Augmented Generation (RAG) foundation:
+> **Trạng thái:** repo đang được chuyển sang **Spec v2** (2 vai trò TEACHER/STUDENT, 25 bảng).
+> **Phase 1** (auth, lớp học, khóa học/chủ đề/bài học/mục tiêu/tài liệu, thông báo) đã viết xong
+> nhưng **chưa chạy `mvn verify`** — xem [`docs/spec-v2/MIGRATION-STATUS.md`](docs/spec-v2/MIGRATION-STATUS.md).
 
-- **AI Teacher Assistant** — helps teachers draft lesson plans, question banks, and assessment matrices.
-- **AI Tutor** — provides scaffolded, context-aware conversational support to students (hints → guiding questions → concept explanation → worked examples).
-- **Personalization Engine** — turns mastery/knowledge-gap data into AI-explained recommendations and personalized learning paths.
+## Stack
 
-A core design principle across every AI feature is **human-in-the-loop**: no AI-generated content (lesson content, questions, recommendations, insight reports) is ever applied to the system without teacher review and approval. Mastery scores and knowledge gaps are always computed by a deterministic rule engine, never decided by the AI.
+| Thành phần | Công nghệ |
+|---|---|
+| Backend | Java 21, Spring Boot 4.1.1, Spring Security + JWT (JJWT 0.12.6), Hibernate/JPA |
+| CSDL | PostgreSQL 17 (+ pgvector cho phase AI), Flyway migration |
+| Cache/hàng đợi | Redis 8 (dùng từ Phase 3) |
+| AI | Google Gemini (Phase 3) |
 
-The backend follows a **Modular Monolith** architecture (Spring Boot) with a dedicated **AI Worker** service (Python) handling the RAG pipeline (parsing, chunking, embedding, retrieval), backed by PostgreSQL/pgvector and Redis.
+Không còn frontend trong repo (đã dọn); API thuần REST, test bằng curl/Postman.
 
-## Team Members
-- Hoih Nghiep
-- Nguyen Ba Thien
-- Mai Thi Thanh Tu
-- Ta Cong Hoang
-- Pham Viet Anh
-
-## Technologies
-
-**Backend**
-- Java 17+, Spring Boot (Modular Monolith)
-- Spring Data JPA / Hibernate
-- Spring Security + JWT (access/refresh token)
-- Flyway (database migration)
-
-**AI / RAG Worker**
-- Python
-- RAG pipeline: parsing → semantic chunking → embedding → hybrid retrieval (vector + keyword) → fusion/rerank
-- AI Gateway pattern — pluggable providers: Gemini / OpenAI / LocalLLM
-
-**Database & Infrastructure**
-- PostgreSQL + `pgvector` extension (embedding storage)
-- Redis (cache, and interim queue for async processing)
-- Docker & Docker Compose (local dev), CI/CD via GitHub Actions
-
-**Frontend**
-- React (TypeScript)
-- REST client with a shared response envelope (`{ success, data, error, meta }`)
-
-**Testing**
-- JUnit 5 + Testcontainers (backend unit/integration)
-- Jest (frontend)
-
-## Project Structure
+## Cấu trúc
 
 ```
-EducMind/
-├── README.md
-├── docs/                          # Living specification — read in this order
-│   ├── REQUIREMENTS.md            # Business requirements, actors, ownership model
-│   ├── ARCHITECTURE.md            # System architecture, module dependency map
-│   ├── DATABASE.md                # Consolidated schema, migration order
-│   ├── API.md                     # Endpoint catalog, pagination standards
-│   ├── AI_RAG.md                  # RAG pipeline & AI modules (Teacher Assistant/Tutor/Personalization)
-│   └── CODING_RULES.md            # Shared coding conventions for all squads
-│
-├── frontend/
-│   └── src/
-│       ├── modules/                # auth, school-class, course, assignment, assessment,
-│       │                            # analytics, teacher-assistant, tutor, personalization,
-│       │                            # notification, reports
-│       ├── shared/                 # API client, pagination hooks, route guards
-│       └── assets/
-│
-├── backend/
-│   ├── educmind-common/           # Shared building blocks — build this first
-│   │   └── src/main/java/com/educmind/common/
-│   │       ├── envelope/           # ApiResponse, GlobalExceptionHandler
-│   │       ├── pagination/         # Offset / cursor-message / cursor-sequence utils
-│   │       ├── authorization/      # Ownership & co-teacher checks
-│   │       ├── events/             # Cross-module application events
-│   │       ├── aigateway/          # AIProvider interface, PromptRegistry, quota service
-│   │       └── review/             # Human-in-the-loop review state machine
-│   │
-│   ├── module-auth/                # Authentication, invite codes, tokens
-│   ├── module-schoolclass/         # School / Class / Class members
-│   ├── module-course/              # Course / Lesson / Resource
-│   ├── module-assignment/          # Assignments & submissions
-│   ├── module-assessment/          # Question bank & assessments
-│   ├── module-analytics/           # Learning evidence, mastery, knowledge gap, recommendation
-│   ├── module-teacher-assistant/   # AI-generated lesson plans / questions / matrices
-│   ├── module-tutor/               # AI Tutor conversations
-│   ├── module-personalization/     # Learning path & insight reports
-│   ├── module-notification/        # In-app notifications (polling)
-│   ├── module-reports/             # Aggregated dashboards & exports
-│   └── ai-worker/                  # Python service — RAG pipeline & retrieval
-│
-├── database/
-│   ├── migrations/                 # Flyway scripts, V1 → V10
-│   └── seed/                       # Dev & test seed data
-│
-└── tests/
-    ├── unit/
-    ├── integration/
-    └── e2e/
+backend/
+├── pom.xml                    # 6 module đang build
+├── educmind-common/           # ApiResponse envelope, exception, phân trang, PORT liên module
+├── educmind-app/              # Spring Boot app: SecurityConfig, cấu hình, seed, migration
+├── module-auth/               # users, đăng nhập, đặt lại mật khẩu
+├── module-schoolclass/        # classes, class_members
+├── module-course/             # courses, course_topics, lessons, learning_objectives, resources
+├── module-notification/       # đọc thông báo (bản ghi do trigger DB sinh)
+├── module-assignment/  …      # ⚠️ code cũ, CHƯA port sang v2 — không nằm trong build
+├── module-assessment/  …
+├── module-analytics/   …
+└── module-teacher-assistant/  …
+database/schema_v2.sql         # DDL v2 gộp (đọc/tra cứu; nguồn thật là Flyway V1..V7)
+docs/spec-v2/                  # yêu cầu, API, gap analysis, trạng thái chuyển đổi
+docker-compose.yml             # postgres + redis
 ```
 
-Full architectural rationale, database schema, and API contracts are documented in [`docs/`](./docs).
+## Chạy thử
 
-## How to Run
-
-**Prerequisites**
-- Docker & Docker Compose
-- JDK 17+ and Maven/Gradle (for local backend development outside Docker)
-- Node.js 18+ (for frontend development)
-- Python 3.11+ (for `ai-worker` development)
-
-**1. Clone the repository**
 ```bash
-git clone <repo-url>
-cd EducMind
-```
+# 1. CSDL
+docker compose up -d postgres
 
-**2. Start infrastructure (PostgreSQL + pgvector, Redis)**
-```bash
-docker compose up -d db redis
-```
-
-**3. Run database migrations**
-```bash
-cd database
-flyway migrate
-```
-
-**4. Run the backend**
-```bash
+# 2. Build (lần đầu sẽ tải dependency)
 cd backend
-./mvnw spring-boot:run
+./mvnw -DskipTests install
+
+# 3. Chạy — Flyway tự tạo 25 bảng khi khởi động
+EDUCMIND_SEED=true ./mvnw -pl educmind-app spring-boot:run
 ```
 
-**5. Run the AI worker**
+Khi `EDUCMIND_SEED=true`, hệ thống tạo sẵn:
+
+| Vai trò | Email | Mật khẩu |
+|---|---|---|
+| Giáo viên | `teacher@educmind.vn` | `Teacher@123` |
+| Học sinh (5 em) | `student1@educmind.vn` … `student5@educmind.vn` | `Student@123` |
+
+Seed tạo lớp **10A1**, khóa **Tin học 10** với 2 chủ đề, 3 bài học (1 bài đã xuất bản kèm 2 mục tiêu).
+
 ```bash
-cd backend/ai-worker
-pip install -r requirements.txt
-python main.py
+# Đăng nhập
+curl -s -X POST http://localhost:8080/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"teacher@educmind.vn","password":"Teacher@123"}'
+
+# Dùng accessToken nhận được
+curl -s http://localhost:8080/api/v1/courses -H "Authorization: Bearer $TOKEN"
 ```
 
-**6. Run the frontend**
-```bash
-cd frontend
-npm install
-npm run dev
-```
+> Database dev có thể **xoá và tạo lại** bất cứ lúc nào (`docker compose down -v`) — khoá chính đã
+> đổi sang UUID nên không cần convert dữ liệu cũ.
 
-**7. Access the app**
-- Frontend: `http://localhost:5173` (or configured port)
-- Backend API: `http://localhost:8080/api/v1`
+## Biến môi trường
 
-> Environment variables (DB credentials, JWT secret, AI provider API keys) are configured via `.env` — see `.env.example` in each service directory (to be added).
+| Biến | Mặc định | Ghi chú |
+|---|---|---|
+| `DB_URL` | `jdbc:postgresql://localhost:5432/educmind` | |
+| `DB_USER` / `DB_PASSWORD` | `educmind` / `educmind_dev` | đổi ở production |
+| `JWT_SECRET` | chuỗi dev | **bắt buộc đổi ở production**, ≥ 32 byte |
+| `JWT_TTL_MINUTES` | `60` | access token, không có refresh token |
+| `FRONT_URL` | `http://localhost:5173` | gốc link đặt lại mật khẩu gửi qua email |
+| `MAIL_USERNAME` / `MAIL_PASSWORD` | trống | trống thì link đặt mật khẩu chỉ ghi vào log |
+| `STORAGE_PATH` | `./storage/resources` | nơi lưu tài liệu tải lên |
+| `EDUCMIND_SEED` | `false` | bật seed dữ liệu dev |
+| `JPA_SHOW_SQL` | `false` | |
 
-## Git Workflow
+## Tài liệu
 
-- `main`: stable code — always deployable.
-- `feature/*`: new features (e.g. `feature/module-auth-login`).
-- `fix/*`: bug fixes (e.g. `fix/pagination-cursor-notifications`).
+| File | Nội dung |
+|---|---|
+| [`docs/spec-v2/01-YEU-CAU.md`](docs/spec-v2/01-YEU-CAU.md) | Đặc tả v2: 2 vai trò, 29 user story, quy tắc nghiệp vụ |
+| [`docs/spec-v2/02-API.md`](docs/spec-v2/02-API.md) | Danh mục endpoint đã triển khai + mã lỗi |
+| [`docs/spec-v2/03-GAP-ANALYSIS.md`](docs/spec-v2/03-GAP-ANALYSIS.md) | Chênh lệch repo ↔ spec và lộ trình 5 phase |
+| [`docs/spec-v2/MIGRATION-STATUS.md`](docs/spec-v2/MIGRATION-STATUS.md) | Đã làm / đang park / chưa kiểm chứng |
+| [`docs/REPO_REVIEW.md`](docs/REPO_REVIEW.md) | Đánh giá repo trước khi chuyển đổi |
+| `docs/` (các file còn lại) | **Tài liệu v1 — chỉ để tham khảo lịch sử** |
 
-**Rules:**
-- Do **not** push directly to `main`.
-- All changes go through a Pull Request, reviewed by at least 1 other team member before merging.
-- Branch naming should reference the module being worked on when possible (e.g. `feature/module-tutor-scaffolding`), to make review ownership clear across the 11 backend modules.
-- Squash or rebase before merging to keep `main` history clean.
+## Lộ trình
+
+| Phase | Nội dung |
+|---|---|
+| **1 ✅** | Schema v2 + auth + lớp + khóa học/chủ đề/bài học/mục tiêu/tài liệu + thông báo |
+| 2 | Bài tập (US-T03/T04), ngân hàng câu hỏi & bài kiểm tra (US-T05/T06), học sinh làm bài (US-S02/S03/S04/S07) |
+| 3 | Chấm tự động & mastery (US-T07/T08, S05/S06, H01), AI sinh câu hỏi nháp (US-T09/T10), gợi ý (US-T13–T15) |
+| 4 | Dọn module cũ, bổ sung AC còn thiếu (AC-G03.4, AC-T11.1), tài liệu API đầy đủ |
+| 5 | CI + Testcontainers + test trigger DB |

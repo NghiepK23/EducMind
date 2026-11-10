@@ -27,20 +27,12 @@
     </properties>
 
     <modules>
-		<module>educmind-app</module>
+        <module>educmind-app</module>
         <module>educmind-common</module>
         <module>module-auth</module>
         <module>module-schoolclass</module>
         <module>module-course</module>
-        <module>module-assignment</module>
-        <module>module-assessment</module>
-        <module>module-analytics</module>
-        <module>module-teacher-assistant</module>
-        <module>module-rag</module>
-        <module>module-tutor</module>
-        <module>module-personalization</module>
         <module>module-notification</module>
-        <module>module-reports</module>
     </modules>
 
 </project>
