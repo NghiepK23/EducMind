@@ -7,6 +7,10 @@ TEACHER_PASSWORD="${TEACHER_PASSWORD:-Teacher@123}"
 STUDENT_EMAIL="${STUDENT_EMAIL:-student1@educmind.vn}"
 STUDENT_PASSWORD="${STUDENT_PASSWORD:-Student@123}"
 
+TMP="$(mktemp -d)"
+LAST_BODY="$TMP/last_body"
+LAST_STATUS="$TMP/last_status"
+
 pass=0
 fail=0
 
@@ -16,28 +20,35 @@ check() {
     pass=$((pass + 1))
   else
     printf 'FAIL  %s  (mong doi: %s, nhan: %s)\n' "$1" "$2" "$3"
+    if [ -f "$LAST_STATUS" ]; then
+      printf '      HTTP %s  %s\n' "$(cat "$LAST_STATUS")" "$(head -c 400 "$LAST_BODY" | tr -d '\n')"
+    fi
     fail=$((fail + 1))
   fi
 }
 
 api() {
-  local method="$1" token="$2" path="$3" body="${4:-}"
-  if [ -n "$body" ]; then
-    curl -s -X "$method" -H "Authorization: Bearer $token" \
-      -H 'Content-Type: application/json' -d "$body" "$BASE_URL$path"
+  local method="$1" token="$2" path="$3" payload="${4:-}"
+  if [ -n "$payload" ]; then
+    curl -s -o "$LAST_BODY" -w '%{http_code}' -X "$method" -H "Authorization: Bearer $token" \
+      -H 'Content-Type: application/json' -d "$payload" "$BASE_URL$path" > "$LAST_STATUS"
   else
-    curl -s -X "$method" -H "Authorization: Bearer $token" "$BASE_URL$path"
+    curl -s -o "$LAST_BODY" -w '%{http_code}' -X "$method" -H "Authorization: Bearer $token" \
+      "$BASE_URL$path" > "$LAST_STATUS"
   fi
+  cat "$LAST_BODY"
 }
 
 status() {
-  local method="$1" token="$2" path="$3" body="${4:-}"
-  if [ -n "$body" ]; then
-    curl -s -o /dev/null -w '%{http_code}' -X "$method" -H "Authorization: Bearer $token" \
-      -H 'Content-Type: application/json' -d "$body" "$BASE_URL$path"
+  local method="$1" token="$2" path="$3" payload="${4:-}"
+  if [ -n "$payload" ]; then
+    curl -s -o "$LAST_BODY" -w '%{http_code}' -X "$method" -H "Authorization: Bearer $token" \
+      -H 'Content-Type: application/json' -d "$payload" "$BASE_URL$path" > "$LAST_STATUS"
   else
-    curl -s -o /dev/null -w '%{http_code}' -X "$method" -H "Authorization: Bearer $token" "$BASE_URL$path"
+    curl -s -o "$LAST_BODY" -w '%{http_code}' -X "$method" -H "Authorization: Bearer $token" \
+      "$BASE_URL$path" > "$LAST_STATUS"
   fi
+  cat "$LAST_STATUS"
 }
 
 login() {
@@ -45,8 +56,7 @@ login() {
     -d "{\"email\":\"$1\",\"password\":\"$2\"}" \
   | python3 -c 'import json,sys
 try:
-    d = json.load(sys.stdin)
-    print(d["data"]["accessToken"])
+    print(json.load(sys.stdin)["data"]["accessToken"])
 except Exception:
     print("")'
 }
@@ -75,13 +85,24 @@ except Exception:
     print("ERR")' "$1"
 }
 
+jpick() {
+  python3 -c 'import json,sys
+key, want = sys.argv[1], sys.argv[2]
+try:
+    items = json.load(sys.stdin)["data"]
+    print([i["id"] for i in items if i["status"] == want][0])
+except Exception:
+    print("ERR")' "$1" "$2"
+}
+
 echo "== EducMind smoke test — $BASE_URL =="
 
-check "health" "200" "$(status GET '' /api/health)"
+api GET "" /api/health > /dev/null
+check "health" "200" "$(cat "$LAST_STATUS")"
 
 TEACHER_TOKEN="$(login "$TEACHER_EMAIL" "$TEACHER_PASSWORD")"
 if [ -z "$TEACHER_TOKEN" ]; then
-  echo "FAIL  dang nhap giao vien ($TEACHER_EMAIL) — kiem tra EDUCMIND_SEED=true va mat khau"
+  echo "FAIL  dang nhap giao vien ($TEACHER_EMAIL)"
   exit 1
 fi
 echo "PASS  dang nhap giao vien"
@@ -91,31 +112,29 @@ check "giao vien co 1 lop" "1" "$(api GET "$TEACHER_TOKEN" /api/v1/classes | jle
 check "giao vien co 1 khoa hoc" "1" "$(api GET "$TEACHER_TOKEN" /api/v1/courses | jlen)"
 
 COURSE_ID="$(api GET "$TEACHER_TOKEN" /api/v1/courses | jfield 0 id)"
+echo "      courseId = $COURSE_ID"
+
 TOPICS_TEACHER="$(api GET "$TEACHER_TOKEN" "/api/v1/courses/$COURSE_ID/topics")"
 check "giao vien thay 2 chu de" "2" "$(printf '%s' "$TOPICS_TEACHER" | jlen)"
 
-PUBLISHED_TOPIC="$(printf '%s' "$TOPICS_TEACHER" | python3 -c 'import json,sys
-try:
-    print([t["id"] for t in json.load(sys.stdin)["data"] if t["status"] == "PUBLISHED"][0])
-except Exception:
-    print("ERR")')"
+PUBLISHED_TOPIC="$(printf '%s' "$TOPICS_TEACHER" | jpick PUBLISHED)"
 DRAFT_TOPIC="$(printf '%s' "$TOPICS_TEACHER" | python3 -c 'import json,sys
 try:
-    print([t["id"] for t in json.load(sys.stdin)["data"] if t["status"] != "PUBLISHED"][0])
+    items = json.load(sys.stdin)["data"]
+    print([i["id"] for i in items if i["status"] != "PUBLISHED"][0])
 except Exception:
     print("ERR")')"
+echo "      topicPublished = $PUBLISHED_TOPIC"
+echo "      topicDraft     = $DRAFT_TOPIC"
 
 check "chu de 1 co 2 bai hoc" "2" "$(api GET "$TEACHER_TOKEN" "/api/v1/topics/$PUBLISHED_TOPIC/lessons" | jlen)"
 check "chu de 2 co 1 bai hoc" "1" "$(api GET "$TEACHER_TOKEN" "/api/v1/topics/$DRAFT_TOPIC/lessons" | jlen)"
 
-PUBLISHED_LESSON="$(api GET "$TEACHER_TOKEN" "/api/v1/topics/$PUBLISHED_TOPIC/lessons" | python3 -c 'import json,sys
-try:
-    print([l["id"] for l in json.load(sys.stdin)["data"] if l["status"] == "PUBLISHED"][0])
-except Exception:
-    print("ERR")')"
-check "bai hoc da xuat ban co 2 muc tieu" "2" "$(api GET "$TEACHER_TOKEN" "/api/v1/lessons/$PUBLISHED_LESSON/objectives" | jlen)"
+PUBLISHED_LESSON="$(api GET "$TEACHER_TOKEN" "/api/v1/topics/$PUBLISHED_TOPIC/lessons" | jpick PUBLISHED)"
+check "bai hoc da xuat ban co 2 muc tieu" "2" \
+  "$(api GET "$TEACHER_TOKEN" "/api/v1/lessons/$PUBLISHED_LESSON/objectives" | jlen)"
 
-check "xoa mem chu de (khong ton tai) tra 404" "404" \
+check "chu de khong ton tai tra 404" "404" \
   "$(status DELETE "$TEACHER_TOKEN" /api/v1/topics/00000000-0000-0000-0000-000000000000)"
 
 STUDENT_TOKEN="$(login "$STUDENT_EMAIL" "$STUDENT_PASSWORD")"
@@ -137,11 +156,13 @@ check "hoc sinh khong tao duoc lop" "403" \
   "$(status POST "$STUDENT_TOKEN" /api/v1/classes '{"name":"Hack"}')"
 check "hoc sinh khong tao duoc khoa hoc" "403" \
   "$(status POST "$STUDENT_TOKEN" "/api/v1/classes/00000000-0000-0000-0000-000000000000/courses" '{"title":"Hack"}')"
-check "goi API khong co token tra 401" "401" \
-  "$(curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/api/v1/courses")"
-check "sai mat khau tra 401" "401" \
-  "$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/v1/auth/login" \
-      -H 'Content-Type: application/json' -d '{"email":"teacher@educmind.vn","password":"sai-mat-khau"}')"
+
+curl -s -o /dev/null -w '%{http_code}' "$BASE_URL/api/v1/courses" > "$LAST_STATUS"
+check "goi API khong co token tra 401" "401" "$(cat "$LAST_STATUS")"
+
+curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/v1/auth/login" \
+  -H 'Content-Type: application/json' -d '{"email":"teacher@educmind.vn","password":"sai"}' > "$LAST_STATUS"
+check "sai mat khau tra 401" "401" "$(cat "$LAST_STATUS")"
 
 check "hoc sinh doc duoc thong bao" "0" \
   "$(api GET "$STUDENT_TOKEN" /api/v1/me/notifications/unread-count | jsfield unreadCount)"
