@@ -58,22 +58,25 @@ Các module này **không nằm trong `<modules>` của `backend/pom.xml`** và 
 `educmind-app`** → build hiện tại chỉ gồm 6 module. Khi làm Phase 2/3, bật lại bằng cách thêm lại vào pom
 sau khi đã viết lại code.
 
-## 4. Chưa kiểm chứng được trong môi trường này
+## 4. Trạng thái kiểm chứng
 
-Máy chạy agent **không có JDK/Maven/PostgreSQL**, nên **chưa chạy `mvn verify` và chưa chạy Flyway thật**.
-Cần chạy tại máy bạn:
+**Đã chạy thật trên macOS (2026-11-10), Java 21 + PostgreSQL 17.11:**
 
-```bash
-docker compose up -d postgres
-cd backend && ./mvnw -DskipTests install
-EDUCMIND_SEED=true DB_URL=jdbc:postgresql://localhost:5432/educmind \
-  ./mvnw -pl educmind-app spring-boot:run
-```
+| Bước | Kết quả |
+|---|---|
+| `mvnw clean install` (6 module) | BUILD SUCCESS |
+| Flyway trên DB trống | `Successfully applied 7 migrations (V1..V7)` |
+| Hibernate `ddl-auto=validate` | **Qua** — mapping PG enum (`user_role`, `content_status`, `notification_type`) đúng |
+| Spring Data | `Found 10 JPA repository interfaces` |
+| Seed (`EDUCMIND_SEED=true`) | Tạo 1 giáo viên, 5 học sinh, lớp 10A1, khóa Tin học 10 (2 chủ đề, 3 bài, 3 mục tiêu) |
+| Khởi động | Tomcat 8080, không còn user in-memory mặc định |
 
-Điểm rủi ro cần kiểm tra đầu tiên khi build:
-1. Hibernate `validate` với cột kiểu **PG enum** (đã dùng `@JdbcTypeCode(SqlTypes.NAMED_ENUM)`).
-2. Trigger J.5 có thể chặn seed nếu thứ tự insert sai (seed đã theo đúng thứ tự: user → class → member → course → topic → lesson → objective).
-3. `spring-boot-starter-webmvc` / Spring Boot 4.1.1 (giữ nguyên version của repo gốc).
+Kiểm tra API end-to-end: `./scripts/smoke-test.sh` (health, đăng nhập 2 vai trò, phân quyền
+giáo viên/học sinh, chủ đề nháp bị ẩn với học sinh, 401/403, thông báo).
+
+**Vẫn còn thiếu:** chưa có unit/integration test, chưa có CI, chưa test trigger J.1–J.5 bằng dữ liệu
+thật (Phase 5). Khi nâng cấp từ bản v1 phải `docker compose down -v` + `mvnw clean install`
+(schema cũ ở version 11, baseline mới dùng lại số hiệu V1..V7).
 
 ## 5. Việc còn thiếu so với spec (ngoài Phase 1)
 

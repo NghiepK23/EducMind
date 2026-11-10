@@ -67,6 +67,12 @@ Khi `EDUCMIND_SEED=true`, hệ thống tạo sẵn:
 
 Seed tạo lớp **10A1**, khóa **Tin học 10** với 2 chủ đề, 3 bài học (1 bài đã xuất bản kèm 2 mục tiêu).
 
+Kiểm tra toàn bộ API Phase 1 (health, đăng nhập 2 vai trò, phân quyền, nội dung):
+
+```bash
+./scripts/smoke-test.sh
+```
+
 ```bash
 # Đăng nhập
 curl -s -X POST http://localhost:8080/api/v1/auth/login \
