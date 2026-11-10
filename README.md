@@ -41,16 +41,22 @@ docker-compose.yml             # postgres + redis
 ## Chạy thử
 
 ```bash
-# 1. CSDL
+# 1. CSDL (xoá volume nếu đã từng chạy bản v1 — xem ghi chú bên dưới)
+docker compose down -v
 docker compose up -d postgres
 
-# 2. Build (lần đầu sẽ tải dependency)
+# 2. Build SẠCH (clean là bắt buộc: target/classes cũ còn sót migration V1..V11 của bản v1)
 cd backend
-./mvnw -DskipTests install
+./mvnw clean install -DskipTests
 
 # 3. Chạy — Flyway tự tạo 25 bảng khi khởi động
 EDUCMIND_SEED=true ./mvnw -pl educmind-app spring-boot:run
 ```
+
+> ⚠️ **Nếu máy bạn đã từng chạy bản v1**: schema cũ đang ở `flyway_schema_history` version 11 và
+> dùng lại đúng các số `V1..V7` với nội dung khác → Flyway sẽ báo lỗi checksum hoặc chạy trên schema
+> sai. Bắt buộc `docker compose down -v` để xoá volume rồi `up` lại (dữ liệu dev, không cần giữ).
+> Tương tự, phải `mvn clean` vì `spring-boot:run` không tự xoá file `.sql` cũ trong `target/classes`.
 
 Khi `EDUCMIND_SEED=true`, hệ thống tạo sẵn:
 
