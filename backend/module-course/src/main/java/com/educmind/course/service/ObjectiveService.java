@@ -7,6 +7,7 @@ import com.educmind.course.entity.LearningObjective;
 import com.educmind.course.entity.Lesson;
 import com.educmind.course.repository.LearningObjectiveRepository;
 import com.educmind.course.repository.LessonRepository;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -79,6 +80,15 @@ public class ObjectiveService {
         LearningObjective objective = objectiveRepository.findById(objectiveId)
                 .orElseThrow(() -> permission.notFound("Không tìm thấy mục tiêu học tập"));
         permission.requireManagedLesson(teacherId, objective.getLessonId());
+
+        // Mục tiêu đã được bài tập/câu hỏi tham chiếu thì không xoá cứng được (FK).
         objectiveRepository.delete(objective);
+        try {
+            objectiveRepository.flush();
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException("OBJECTIVE_IN_USE",
+                    "Mục tiêu đã được dùng cho bài tập hoặc câu hỏi, không thể xoá",
+                    HttpStatus.CONFLICT);
+        }
     }
 }
