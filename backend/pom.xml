@@ -34,6 +34,7 @@
         <module>module-course</module>
         <module>module-assignment</module>
         <module>module-analytics</module>
+        <module>module-assessment</module>
         <module>module-notification</module>
     </modules>
 

@@ -1,6 +1,8 @@
 package com.educmind.assessment.repository;
 
+import com.educmind.assessment.entity.DifficultyLevel;
 import com.educmind.assessment.entity.Question;
+import com.educmind.assessment.entity.QuestionType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -11,10 +13,10 @@ public interface QuestionRepository extends JpaRepository<Question, UUID> {
 
     Optional<Question> findByIdAndDeletedAtIsNull(UUID id);
 
-    /** TEACHER xem danh sách câu hỏi trong ngân hàng — E.6 GET /courses/{id}/questions. */
     List<Question> findByCourseIdAndDeletedAtIsNullOrderByCreatedAtDesc(UUID courseId);
 
-    /** Lọc theo lesson cụ thể (dùng khi chọn câu hỏi thêm vào đề theo objective của 1 lesson). */
-    List<Question> findByCourseIdAndLessonIdAndDeletedAtIsNullOrderByCreatedAtDesc(
-            UUID courseId, UUID lessonId);
+    List<Question> findByCourseIdAndTypeAndDeletedAtIsNullOrderByCreatedAtDesc(UUID courseId, QuestionType type);
+
+    List<Question> findByCourseIdAndDifficultyAndDeletedAtIsNullOrderByCreatedAtDesc(
+            UUID courseId, DifficultyLevel difficulty);
 }

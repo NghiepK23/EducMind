@@ -23,4 +23,10 @@ public interface LearningEvidencePort {
      * Idempotent: chấm lại chỉ cập nhật điểm, không tạo bản ghi trùng.
      */
     void record(UUID studentId, UUID objectiveId, SourceType sourceType, UUID sourceId, double score);
+
+    /**
+     * Như {@link #record} nhưng chỉ ghi đè khi điểm mới cao hơn.
+     * Dùng cho bài kiểm tra: làm lại nhiều lượt thì bằng chứng giữ kết quả tốt nhất (AC-T14.2).
+     */
+    void recordHighest(UUID studentId, UUID objectiveId, SourceType sourceType, UUID sourceId, double score);
 }

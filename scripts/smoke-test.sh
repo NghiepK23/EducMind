@@ -263,5 +263,96 @@ api DELETE "$TEACHER_TOKEN" "/api/v1/assignments/$ASSIGNMENT_ID" > /dev/null
 check "giao vien xoa bai tap tra 200" "200" "$(cat "$LAST_STATUS")"
 
 echo
+echo "== Phase 3: cau hoi & bai kiem tra (US-T05/T06/T13-T15, US-S03/S04) =="
+
+OPEN_AT="$(python3 -c 'import datetime;print((datetime.datetime.now(datetime.timezone.utc)-datetime.timedelta(hours=1)).isoformat())')"
+CLOSE_AT="$(python3 -c 'import datetime;print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=2)).isoformat())')"
+
+Q1_BODY="$(printf '{"type":"SINGLE_CHOICE","difficulty":"EASY","content":"2 + 2 bang may?","options":["3","4","5"],"correctOptionIndexes":[1],"objectiveIds":["%s"]}' "$OBJECTIVE_ID")"
+api POST "$TEACHER_TOKEN" "/api/v1/courses/$COURSE_ID/questions" "$Q1_BODY" > /dev/null
+check "tao cau hoi trac nghiem" "201" "$(cat "$LAST_STATUS")"
+Q1="$(cat "$LAST_BODY" | jobj id)"
+
+Q2_BODY="$(printf '{"type":"ESSAY","difficulty":"MEDIUM","content":"Trinh bay khai niem thong tin","objectiveIds":["%s"]}' "$OBJECTIVE_ID")"
+api POST "$TEACHER_TOKEN" "/api/v1/courses/$COURSE_ID/questions" "$Q2_BODY" > /dev/null
+check "tao cau hoi tu luan" "201" "$(cat "$LAST_STATUS")"
+Q2="$(cat "$LAST_BODY" | jobj id)"
+
+DUP_BODY="$(printf '{"title":"Trung cau hoi","durationMinutes":30,"maxAttempts":1,"openAt":"%s","closeAt":"%s","questions":[{"questionId":"%s","weight":1},{"questionId":"%s","weight":1}]}' "$OPEN_AT" "$CLOSE_AT" "$Q1" "$Q1")"
+api POST "$TEACHER_TOKEN" "/api/v1/courses/$COURSE_ID/assessments" "$DUP_BODY" > /dev/null
+check "trung cau hoi trong bai kiem tra tra 422" "422" "$(cat "$LAST_STATUS")"
+
+EXAM_BODY="$(printf '{"title":"Kiem tra smoke","durationMinutes":30,"maxAttempts":2,"openAt":"%s","closeAt":"%s","questions":[{"questionId":"%s","weight":2},{"questionId":"%s","weight":3}]}' "$OPEN_AT" "$CLOSE_AT" "$Q1" "$Q2")"
+api POST "$TEACHER_TOKEN" "/api/v1/courses/$COURSE_ID/assessments" "$EXAM_BODY" > /dev/null
+check "tao bai kiem tra" "201" "$(cat "$LAST_STATUS")"
+EXAM_ID="$(cat "$LAST_BODY" | jobj id)"
+
+check "tong diem toi da = tong trong so" "5" "$(cat "$LAST_BODY" | python3 -c 'import json,sys
+try:
+    print(int(float(json.load(sys.stdin)["data"]["maxScore"])))
+except Exception:
+    print("ERR")')"
+
+api POST "$TEACHER_TOKEN" "/api/v1/assessments/$EXAM_ID/publish" > /dev/null
+check "xuat ban bai kiem tra" "PUBLISHED" "$(cat "$LAST_BODY" | jsfield status)"
+
+api POST "$STUDENT_TOKEN" "/api/v1/assessments/$EXAM_ID/attempts" > /dev/null
+check "hoc sinh bat dau lam bai" "201" "$(cat "$LAST_STATUS")"
+ATTEMPT_ID="$(cat "$LAST_BODY" | jobj attemptId)"
+
+check "khong lo dap an dung cho hoc sinh" "0" "$(grep -c "correctOptionIndexes" "$LAST_BODY")"
+
+api PUT "$STUDENT_TOKEN" "/api/v1/attempts/$ATTEMPT_ID/answers/$Q1" '{"selectedOptionIndexes":[1]}' > /dev/null
+check "luu cau tra loi trac nghiem" "200" "$(cat "$LAST_STATUS")"
+
+api PUT "$STUDENT_TOKEN" "/api/v1/attempts/$ATTEMPT_ID/answers/$Q2" '{"text":"Thong tin la..."}' > /dev/null
+check "luu cau tra loi tu luan" "200" "$(cat "$LAST_STATUS")"
+
+api POST "$STUDENT_TOKEN" "/api/v1/attempts/$ATTEMPT_ID/submit" > /dev/null
+check "nop bai xong o trang thai cho cham" "SUBMITTED" "$(cat "$LAST_BODY" | jsfield status)"
+
+api GET "$STUDENT_TOKEN" "/api/v1/assessments/$EXAM_ID/my-attempts" > /dev/null
+check "chua cham thi chua co diem" "0" "$(python3 -c 'import json,sys
+try:
+    rows = json.load(open(sys.argv[1]))["data"]
+    print(0 if rows[0]["totalScore"] is None else 1)
+except Exception:
+    print("ERR")' "$LAST_BODY")"
+
+api GET "$TEACHER_TOKEN" "/api/v1/assessments/$EXAM_ID/attempts?status=SUBMITTED" > /dev/null
+check "giao vien loc duoc luot cho cham" "1" "$(cat "$LAST_BODY" | jlen)"
+
+api PATCH "$TEACHER_TOKEN" "/api/v1/attempts/$ATTEMPT_ID/answers/$Q2/grade" '{"score":10,"feedback":"x"}' > /dev/null
+check "diem cau vuot trong so tra 422" "422" "$(cat "$LAST_STATUS")"
+
+api PATCH "$TEACHER_TOKEN" "/api/v1/attempts/$ATTEMPT_ID/answers/$Q2/grade" '{"score":3,"feedback":"Tot"}' > /dev/null
+check "cham tay cau tu luan xong thi luot lam GRADED" "GRADED" "$(cat "$LAST_BODY" | jsfield status)"
+check "tong diem = 2 + 3" "1" "$(cat "$LAST_BODY" | python3 -c 'import json,sys
+try:
+    print(1 if abs(float(json.load(sys.stdin)["data"]["totalScore"]) - 5.0) < 0.001 else 0)
+except Exception:
+    print("ERR")')"
+
+api GET "$STUDENT_TOKEN" "/api/v1/attempts/$ATTEMPT_ID" > /dev/null
+check "hoc sinh thay diem sau khi cham" "GRADED" "$(cat "$LAST_BODY" | jsfield status)"
+check "hoc sinh thay nhan xet tung cau" "1" "$(grep -c "Tot" "$LAST_BODY")"
+
+api GET "$TEACHER_TOKEN" "/api/v1/assessments/$EXAM_ID/results" > /dev/null
+check "ket qua co du 5 hoc sinh" "5" "$(cat "$LAST_BODY" | jlen)"
+check "diem cao nhat cua hoc sinh da lam = 5" "1" "$(python3 -c 'import json,sys
+try:
+    rows = json.load(open(sys.argv[1]))["data"]
+    best = [r["bestScore"] for r in rows if r["bestScore"] is not None]
+    print(1 if best and abs(float(best[0]) - 5.0) < 0.001 else 0)
+except Exception:
+    print("ERR")' "$LAST_BODY")"
+
+api POST "$TEACHER_TOKEN" "/api/v1/assessments/$EXAM_ID/unpublish" > /dev/null
+check "huy xuat ban khi da co luot lam tra 409" "409" "$(cat "$LAST_STATUS")"
+
+api DELETE "$TEACHER_TOKEN" "/api/v1/assessments/$EXAM_ID" > /dev/null
+check "xoa bai kiem tra tra 200" "200" "$(cat "$LAST_STATUS")"
+
+echo
 echo "Ket qua: $pass PASS, $fail FAIL"
 [ "$fail" -eq 0 ]

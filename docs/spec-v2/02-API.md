@@ -98,7 +98,49 @@
 Thời hạn nộp: `now ≤ dueDate`, hoặc nếu `allowLate` thì tới `lateCloseDate`; quá hạn → 422 `SUBMISSION_CLOSED`.
 Trạng thái `SUBMITTED`/`LATE` do DB tính lại theo thời điểm nộp/sửa.
 
-## 6. Thông báo (US-G03)
+## 6. Ngân hàng câu hỏi (US-T05) — chỉ TEACHER
+
+| Method | Path | Ghi chú |
+|---|---|---|
+| POST | `/api/v1/courses/{courseId}/questions` | `{type, difficulty, bloomLevel?, content, options?, correctOptionIndexes?, expectedAnswer?, objectiveIds?}`; nguồn = `MANUAL` (AC-T05.2) |
+| GET | `/api/v1/courses/{courseId}/questions?type=&difficulty=` | |
+| GET | `/api/v1/questions/{id}` | |
+| PATCH | `/api/v1/questions/{id}` | nội dung/đáp án bị khoá khi câu hỏi đã dùng trong bài kiểm tra có lượt làm (AC-T11.4); độ khó/Bloom luôn sửa được |
+| DELETE | `/api/v1/questions/{id}` | xoá mềm, không ảnh hưởng bài kiểm tra đã tạo (AC-T12.2) |
+
+`type`: `SINGLE_CHOICE` | `MULTIPLE_CHOICE` | `TRUE_FALSE` | `SHORT_ANSWER` | `ESSAY`.
+Trắc nghiệm phải có ≥ 2 phương án và đáp án đúng nằm trong phạm vi (AC-T05.1); `TRUE_FALSE` đúng 2 phương án.
+Câu hỏi không gắn mục tiêu vẫn lưu được nhưng không sinh bằng chứng (AC-T05.6, AC-S03.7).
+
+## 7. Bài kiểm tra (US-T06, US-T13, US-T14)
+
+| Method | Path | Quyền | Ghi chú |
+|---|---|---|---|
+| POST | `/api/v1/courses/{courseId}/assessments` | TEACHER | `{title, durationMinutes, maxAttempts, openAt, closeAt, topicId?, lessonId?, questions:[{questionId, weight}]}` |
+| GET | `/api/v1/courses/{courseId}/assessments` | cả hai | học sinh chỉ thấy bài `PUBLISHED` |
+| GET | `/api/v1/assessments/{id}` | cả hai | `maxScore` = tổng trọng số (AC-T06.4) |
+| PATCH | `/api/v1/assessments/{id}` | TEACHER | đổi câu hỏi bị chặn khi đã có lượt làm; `maxAttempts` không thấp hơn số lượt đã làm (AC-T11.6) |
+| DELETE | `/api/v1/assessments/{id}` | TEACHER | xoá mềm |
+| POST | `/api/v1/assessments/{id}/publish` | TEACHER | chưa có câu hỏi → 422 (AC-T13.2) |
+| POST | `/api/v1/assessments/{id}/unpublish` | TEACHER | đã có lượt làm → 409 (AC-T13.4) |
+| GET | `/api/v1/assessments/{id}/results` | TEACHER | mọi học sinh của lớp + điểm cao nhất trong các lượt đã chấm (AC-T14.1/14.2) |
+| GET | `/api/v1/assessments/{id}/attempts?status=` | TEACHER | lọc `IN_PROGRESS` / `SUBMITTED` / `GRADED` (AC-T14.3) |
+| GET | `/api/v1/attempts/{id}/detail` | TEACHER | chi tiết từng câu trả lời để chấm tay |
+| PATCH | `/api/v1/attempts/{id}/answers/{questionId}/grade` | TEACHER | `{score, feedback}`; 0 ≤ score ≤ trọng số (AC-T15.1); chấm đủ câu → lượt làm `GRADED` + tổng điểm (AC-T15.2) |
+
+## 8. Làm bài kiểm tra (US-S03, US-S04) — chỉ STUDENT
+
+| Method | Path | Ghi chú |
+|---|---|---|
+| POST | `/api/v1/assessments/{id}/attempts` | bắt đầu hoặc **mở lại** lượt đang dở (AC-S03.2); ngoài giờ → 422; hết lượt → 422 (AC-S03.1) |
+| GET | `/api/v1/attempts/{id}` | kèm `deadline` = lúc bắt đầu + thời lượng; quá hạn thì tự nộp (AC-S03.3) |
+| PUT | `/api/v1/attempts/{id}/answers/{questionId}` | `{selectedOptionIndexes?}` hoặc `{text?}` |
+| POST | `/api/v1/attempts/{id}/submit` | trắc nghiệm chấm tự động; tự luận ở trạng thái `SUBMITTED` chờ giáo viên (AC-S03.4) |
+| GET | `/api/v1/assessments/{id}/my-attempts` | `totalScore` chỉ có khi lượt đã `GRADED` (AC-S04.2, AC-S04.3) |
+
+Đáp án đúng không bao giờ trả về cho học sinh trong lúc làm bài.
+
+## 9. Thông báo (US-G03)
 
 | Method | Path | Ghi chú |
 |---|---|---|
@@ -110,17 +152,17 @@ Trạng thái `SUBMITTED`/`LATE` do DB tính lại theo thời điểm nộp/s�
 > Bản ghi thông báo **do trigger DB sinh** (V7 — J.4) khi: học sinh nộp bài/nộp lại, bài tập được chấm,
 > bài học/bài tập/bài kiểm tra được xuất bản, AI xong/thất bại, có gợi ý mới, có bài kiểm tra cần chấm.
 
-## 7. Mã lỗi đang dùng
+## 10. Mã lỗi đang dùng
 
 | HTTP | `error.code` |
 |---|---|
 | 400 | `INVALID_FILTER`, `RESET_TOKEN_INVALID`, `CURRENT_PASSWORD_INVALID` |
 | 401 | `INVALID_CREDENTIALS`, `TOKEN_EXPIRED` |
-| 403 | `FORBIDDEN`, `NOT_CLASS_OWNER`, `NOT_COURSE_OWNER`, `CLASS_ACCESS_DENIED`, `COURSE_ACCESS_DENIED`, `TOPIC_NOT_PUBLISHED`, `LESSON_NOT_PUBLISHED`, `ASSIGNMENT_NOT_PUBLISHED`, `SUBMISSION_ACCESS_DENIED` |
-| 404 | `NOT_FOUND`, `CLASS_NOT_FOUND`, `USER_NOT_FOUND`, `STUDENT_NOT_IN_CLASS`, `NOTIFICATION_NOT_FOUND`, `SUBMISSION_NOT_FOUND`, `SUBMISSION_HAS_NO_FILE` |
+| 403 | `FORBIDDEN`, `NOT_CLASS_OWNER`, `NOT_COURSE_OWNER`, `CLASS_ACCESS_DENIED`, `COURSE_ACCESS_DENIED`, `TOPIC_NOT_PUBLISHED`, `LESSON_NOT_PUBLISHED`, `ASSIGNMENT_NOT_PUBLISHED`, `SUBMISSION_ACCESS_DENIED`, `ASSESSMENT_NOT_PUBLISHED` |
+| 404 | `NOT_FOUND`, `CLASS_NOT_FOUND`, `USER_NOT_FOUND`, `STUDENT_NOT_IN_CLASS`, `NOTIFICATION_NOT_FOUND`, `SUBMISSION_NOT_FOUND`, `SUBMISSION_HAS_NO_FILE`, `ATTEMPT_NOT_FOUND` |
 | 405 | `METHOD_NOT_ALLOWED` |
-| 409 | `EMAIL_ALREADY_EXISTS`, `EMAIL_BELONGS_TO_TEACHER`, `STUDENT_ALREADY_IN_CLASS`, `DUPLICATE_OBJECTIVE_CODE`, `MAX_SCORE_LOCKED`, `ASSIGNMENT_HAS_GRADED_SUBMISSIONS`, `SUBMISSION_ALREADY_EXISTS`, `SUBMISSION_ALREADY_GRADED`, `OBJECTIVE_IN_USE` |
+| 409 | `EMAIL_ALREADY_EXISTS`, `EMAIL_BELONGS_TO_TEACHER`, `STUDENT_ALREADY_IN_CLASS`, `DUPLICATE_OBJECTIVE_CODE`, `MAX_SCORE_LOCKED`, `ASSIGNMENT_HAS_GRADED_SUBMISSIONS`, `SUBMISSION_ALREADY_EXISTS`, `SUBMISSION_ALREADY_GRADED`, `OBJECTIVE_IN_USE`, `QUESTION_LOCKED`, `ASSESSMENT_HAS_ATTEMPTS`, `ATTEMPT_NOT_EDITABLE`, `ATTEMPT_ALREADY_SUBMITTED`, `ATTEMPT_NOT_SUBMITTED` |
 | 413 | `FILE_TOO_LARGE` |
 | 415 | `UNSUPPORTED_FILE_TYPE` |
-| 422 | `VALIDATION_ERROR`, `WEAK_PASSWORD`, `EMPTY_FILE`, `LESSON_HAS_NO_OBJECTIVE`, `TOPIC_NOT_IN_SAME_COURSE`, `SCOPE_CONFLICT`, `SCOPE_INVALID`, `SCOPE_NOT_IN_COURSE`, `OBJECTIVE_NOT_IN_COURSE`, `LATE_CLOSE_REQUIRED`, `LATE_CLOSE_INVALID`, `DUE_DATE_IN_PAST`, `SUBMISSION_CLOSED`, `SUBMISSION_EMPTY`, `SCORE_OUT_OF_RANGE` |
+| 422 | `VALIDATION_ERROR`, `WEAK_PASSWORD`, `EMPTY_FILE`, `LESSON_HAS_NO_OBJECTIVE`, `TOPIC_NOT_IN_SAME_COURSE`, `SCOPE_CONFLICT`, `SCOPE_INVALID`, `SCOPE_NOT_IN_COURSE`, `OBJECTIVE_NOT_IN_COURSE`, `LATE_CLOSE_REQUIRED`, `LATE_CLOSE_INVALID`, `DUE_DATE_IN_PAST`, `SUBMISSION_CLOSED`, `SUBMISSION_EMPTY`, `SCORE_OUT_OF_RANGE`, `QUESTION_OPTIONS_INVALID`, `QUESTION_ANSWER_INVALID`, `INVALID_QUESTION_TYPE`, `INVALID_DIFFICULTY`, `DUPLICATE_QUESTION`, `QUESTION_NOT_IN_COURSE`, `QUESTION_NOT_IN_ASSESSMENT`, `QUESTION_NOT_FOUND`, `INVALID_QUESTION_WEIGHT`, `ASSESSMENT_TIME_INVALID`, `ASSESSMENT_HAS_NO_QUESTION`, `ASSESSMENT_NOT_OPEN`, `ASSESSMENT_CLOSED`, `MAX_ATTEMPTS_REACHED`, `MAX_ATTEMPTS_TOO_LOW`, `ATTEMPT_EXPIRED`, `ANSWER_INVALID` |
 | 500 | `INTERNAL_ERROR`, `STORAGE_ERROR` |

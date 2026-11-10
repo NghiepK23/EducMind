@@ -117,7 +117,7 @@ curl -s http://localhost:8080/api/v1/courses -H "Authorization: Bearer $TOKEN"
 |---|---|
 | **1 ✅** | Schema v2 + auth + lớp + khóa học/chủ đề/bài học/mục tiêu/tài liệu + thông báo |
 | **2A ✅** | Bài tập: tạo/xuất bản, roster, chấm điểm, bằng chứng học tập, học sinh nộp/sửa/xoá/nộp lại (US-T03/T04, US-S02/S04/S07) |
-| 2B | Ngân hàng câu hỏi (US-T05) + bài kiểm tra & chấm tự động (US-T06/T13–T15, S03) |
+| **2B ✅** | Ngân hàng câu hỏi (US-T05) + bài kiểm tra, chấm tự động & chấm tay, kết quả lớp (US-T06/T13–T15, S03/S04) |
 | 3 | Chấm tự động & mastery (US-T07/T08, S05/S06, H01), AI sinh câu hỏi nháp (US-T09/T10), gợi ý (US-T13–T15) |
 | 4 | Dọn module cũ, bổ sung AC còn thiếu (AC-G03.4, AC-T11.1), tài liệu API đầy đủ |
 | 5 | CI + Testcontainers + test trigger DB |

@@ -29,11 +29,34 @@ public class LearningEvidencePortImpl implements LearningEvidencePort {
 
     @Override
     @Transactional
-    public void record(UUID studentId, UUID objectiveId, SourceType sourceType, UUID sourceId, double score) {
-        BigDecimal normalized = BigDecimal.valueOf(score)
+    public void recordHighest(UUID studentId, UUID objectiveId, SourceType sourceType, UUID sourceId,
+                              double score) {
+        BigDecimal normalized = normalize(score);
+        EvidenceSource source = EvidenceSource.valueOf(sourceType.name());
+        Optional<LearningEvidence> existing = repository
+                .findByStudentIdAndObjectiveIdAndSourceTypeAndSourceId(studentId, objectiveId, source, sourceId);
+
+        if (existing.isEmpty()) {
+            repository.save(new LearningEvidence(studentId, objectiveId, source, sourceId, normalized));
+            return;
+        }
+        if (existing.get().getScore() == null || normalized.compareTo(existing.get().getScore()) > 0) {
+            existing.get().updateScore(normalized);
+            repository.save(existing.get());
+        }
+    }
+
+    private BigDecimal normalize(double score) {
+        return BigDecimal.valueOf(score)
                 .setScale(3, RoundingMode.HALF_UP)
                 .max(BigDecimal.ZERO)
                 .min(BigDecimal.ONE);
+    }
+
+    @Override
+    @Transactional
+    public void record(UUID studentId, UUID objectiveId, SourceType sourceType, UUID sourceId, double score) {
+        BigDecimal normalized = normalize(score);
 
         EvidenceSource source = EvidenceSource.valueOf(sourceType.name());
 

@@ -17,28 +17,8 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Entity ứng với bảng `questions` — V4__module_assignment_assessment.sql,
- * Module04_Assignment_Assessment_FINAL.md mục E.4/E.5.
- *
- * {@link #courseId} là cross-module reference tới module-course (bảng courses).
- * {@link #lessonId} là cross-module reference tới module-course (bảng lessons) —
- * NULLABLE: NULL nghĩa là câu hỏi tổng hợp/ôn tập toàn course, không gắn 1 lesson
- * cụ thể (Module04_PATCH_lesson_id.md).
- * {@link #createdBy} là cross-module reference sang module-auth (bảng users).
- *
- * [ĐÃ SỬA — V5__module_analytics_lo_id_fix.sql] learningObjectiveId (UUID) thay cho
- * learningObjectiveCode (String tự do) cũ — tham chiếu đúng "id" của 1 phần tử trong
- * lessons.learning_objectives (JSONB, module-course), không phải chuỗi tự gõ không
- * liên kết gì. Ràng buộc cũ giữ nguyên tinh thần: learningObjectiveId != null BẮT
- * BUỘC kéo theo lessonId != null, và phải thực sự thuộc đúng lesson đó (validate ở
- * QuestionService qua LessonAccessPort, KHÔNG phải DB constraint vì objective nằm
- * trong JSONB của bảng khác, không có FK).
- *
- * {@link #options}/{@link #correctAnswer}: JSONB nhưng hình dạng dữ liệu thay đổi
- * tùy {@link #questionType} (options là mảng lựa chọn cho SINGLE/MULTIPLE_CHOICE;
- * correctAnswer có thể là mảng string ["A"] hoặc object {"expected_keywords":[...]}
- * cho SHORT_ANSWER) — dùng kiểu Object chung thay vì 1 class Java cố định hình dạng,
- * khác cách Lesson.learningObjectives dùng List&lt;LearningObjective&gt; cố định.
+ * Bảng questions (Spec v2 — bảng 12; US-T05).
+ * options/correct_answer là JSONB: mảng chuỗi phương án / mảng chỉ số đáp án đúng.
  */
 @Entity
 @Table(name = "questions")
@@ -48,57 +28,49 @@ public class Question {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "course_id", nullable = false, updatable = false)
+    @Column(name = "course_id", nullable = false)
     private UUID courseId;
 
-    @Column(name = "lesson_id")
-    private UUID lessonId;
-
-    @Column(name = "question_text", nullable = false, columnDefinition = "TEXT")
-    private String questionText;
+    @Column(nullable = false, columnDefinition = "text")
+    private String content;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "question_type", nullable = false, length = 30)
-    private QuestionType questionType;
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
+    private QuestionType type;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private Difficulty difficulty;
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
+    private DifficultyLevel difficulty;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "cognitive_level", length = 30)
-    private CognitiveLevel cognitiveLevel;
-
-    @Column(name = "learning_objective_id")
-    private UUID learningObjectiveId;
+    @Column(name = "bloom_level", length = 30)
+    private String bloomLevel;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb")
-    private Object options;
+    private String options;
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "correct_answer", columnDefinition = "jsonb")
-    private Object correctAnswer;
-
-    @Column(columnDefinition = "TEXT")
-    private String explanation;
+    private String correctAnswer;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private QuestionSource source = QuestionSource.MANUAL;
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
+    private QuestionSource source;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "review_status", nullable = false, length = 20)
-    private ReviewStatus reviewStatus = ReviewStatus.APPROVED;
-
-    @Column(name = "created_by", nullable = false, updatable = false)
+    @Column(name = "created_by", nullable = false)
     private UUID createdBy;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    @Column(name = "updated_by")
+    private UUID updatedBy;
 
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
@@ -106,43 +78,54 @@ public class Question {
     protected Question() {
     }
 
-    public Question(UUID courseId, String questionText, QuestionType questionType,
-                     Difficulty difficulty, UUID createdBy) {
+    public Question(UUID courseId, String content, QuestionType type, DifficultyLevel difficulty,
+                    String bloomLevel, String options, String correctAnswer, UUID createdBy) {
         this.courseId = courseId;
-        this.questionText = questionText;
-        this.questionType = questionType;
+        this.content = content;
+        this.type = type;
         this.difficulty = difficulty;
+        this.bloomLevel = bloomLevel;
+        this.options = options;
+        this.correctAnswer = correctAnswer;
+        this.source = QuestionSource.MANUAL;
         this.createdBy = createdBy;
     }
 
     @PrePersist
-    protected void onCreate() {
+    void onCreate() {
         OffsetDateTime now = OffsetDateTime.now();
-        this.createdAt = now;
-        this.updatedAt = now;
+        createdAt = now;
+        updatedAt = now;
     }
 
     @PreUpdate
-    protected void onUpdate() {
-        this.updatedAt = OffsetDateTime.now();
+    void onUpdate() {
+        updatedAt = OffsetDateTime.now();
     }
 
-    /**
-     * Duyệt câu hỏi — E.6, PATCH /questions/{id}/review. Sau PATCH_4Decisions PATCH 1,
-     * chỉ còn ý nghĩa thực tế cho source=MANUAL (nếu giáo viên chủ động lưu PENDING).
-     */
-    public void approve() {
-        this.reviewStatus = ReviewStatus.APPROVED;
+    /** AC-T11.4: chỉ cho sửa nội dung khi câu hỏi chưa được dùng trong bài kiểm tra có lượt làm. */
+    public void update(String content, QuestionType type, DifficultyLevel difficulty, String bloomLevel,
+                       String options, String correctAnswer, UUID actorId) {
+        this.content = content;
+        this.type = type;
+        this.difficulty = difficulty;
+        this.bloomLevel = bloomLevel;
+        this.options = options;
+        this.correctAnswer = correctAnswer;
+        this.updatedBy = actorId;
     }
 
-    /** Từ chối câu hỏi — cùng ngữ cảnh với {@link #approve()}. */
-    public void reject() {
-        this.reviewStatus = ReviewStatus.REJECTED;
+    /** AC-T11.4: vẫn cho sửa độ khó / mức Bloom khi câu hỏi đã được dùng. */
+    public void updateMetadata(DifficultyLevel difficulty, String bloomLevel, UUID actorId) {
+        this.difficulty = difficulty;
+        this.bloomLevel = bloomLevel;
+        this.updatedBy = actorId;
     }
 
-    // ------------------------------------------------------------------
-    // Getters & setters
-    // ------------------------------------------------------------------
+    public void markDeleted(UUID actorId) {
+        this.deletedAt = OffsetDateTime.now();
+        this.updatedBy = actorId;
+    }
 
     public UUID getId() {
         return id;
@@ -152,88 +135,32 @@ public class Question {
         return courseId;
     }
 
-    public UUID getLessonId() {
-        return lessonId;
+    public String getContent() {
+        return content;
     }
 
-    public void setLessonId(UUID lessonId) {
-        this.lessonId = lessonId;
+    public QuestionType getType() {
+        return type;
     }
 
-    public String getQuestionText() {
-        return questionText;
-    }
-
-    public void setQuestionText(String questionText) {
-        this.questionText = questionText;
-    }
-
-    public QuestionType getQuestionType() {
-        return questionType;
-    }
-
-    public void setQuestionType(QuestionType questionType) {
-        this.questionType = questionType;
-    }
-
-    public Difficulty getDifficulty() {
+    public DifficultyLevel getDifficulty() {
         return difficulty;
     }
 
-    public void setDifficulty(Difficulty difficulty) {
-        this.difficulty = difficulty;
+    public String getBloomLevel() {
+        return bloomLevel;
     }
 
-    public CognitiveLevel getCognitiveLevel() {
-        return cognitiveLevel;
-    }
-
-    public void setCognitiveLevel(CognitiveLevel cognitiveLevel) {
-        this.cognitiveLevel = cognitiveLevel;
-    }
-
-    public UUID getLearningObjectiveId() {
-        return learningObjectiveId;
-    }
-
-    public void setLearningObjectiveId(UUID learningObjectiveId) {
-        this.learningObjectiveId = learningObjectiveId;
-    }
-
-    public Object getOptions() {
+    public String getOptions() {
         return options;
     }
 
-    public void setOptions(Object options) {
-        this.options = options;
-    }
-
-    public Object getCorrectAnswer() {
+    public String getCorrectAnswer() {
         return correctAnswer;
-    }
-
-    public void setCorrectAnswer(Object correctAnswer) {
-        this.correctAnswer = correctAnswer;
-    }
-
-    public String getExplanation() {
-        return explanation;
-    }
-
-    public void setExplanation(String explanation) {
-        this.explanation = explanation;
     }
 
     public QuestionSource getSource() {
         return source;
-    }
-
-    public void setSource(QuestionSource source) {
-        this.source = source;
-    }
-
-    public ReviewStatus getReviewStatus() {
-        return reviewStatus;
     }
 
     public UUID getCreatedBy() {
@@ -244,15 +171,7 @@ public class Question {
         return createdAt;
     }
 
-    public OffsetDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
     public OffsetDateTime getDeletedAt() {
         return deletedAt;
-    }
-
-    public void setDeletedAt(OffsetDateTime deletedAt) {
-        this.deletedAt = deletedAt;
     }
 }
