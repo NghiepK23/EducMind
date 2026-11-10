@@ -12,7 +12,7 @@
 | Sinh thông báo | **Trigger DB** (V7 — J.4); tầng Java chỉ đọc/cập nhật trạng thái đã xem |
 | Tiến độ | Làm **Phase 1** trước, review rồi mới sang Phase 2 |
 
-## 2. Phase 1 + Phase 2A + Phase 2B — ĐÃ XONG
+## 2. Phase 1 + Phase 2A + Phase 2B — ĐÃ XONG & ĐÃ NGHIỆM THU
 
 ### Schema (Flyway baseline mới, thay toàn bộ V1..V11 cũ)
 
@@ -75,7 +75,7 @@ sau khi đã viết lại code.
 | Smoke test Phase 1 | 19/19 PASS (`scripts/smoke-test.sh`) |
 | Phase 2A | 32/32 check PASS (`scripts/smoke-test.sh`) |
 | Phase 2B (lần chạy 1) | 48/54 PASS — 6 FAIL, xem ghi chú bên dưới |
-| Phase 2B (sau khi sửa) | **chưa chạy lại** — cần build + `./scripts/smoke-test.sh` (kỳ vọng 54/54) |
+| Phase 2B (sau khi sửa, commit `460e6eb`) | **54/54 PASS** — `mvnw clean install` BUILD SUCCESS, không cần xoá DB |
 
 **Ghi chú lần chạy 2B đầu tiên (2026-11-10):**
 
@@ -89,6 +89,8 @@ sau khi đã viết lại code.
    (mỗi lần chạy smoke trước đó để lại thông báo `NEW_ASSIGNMENT_PUBLISHED`, `ASSIGNMENT_GRADED`).
    Đã đổi thành kiểm tra endpoint trả 200 + `unreadCount` là số nguyên không âm.
 3. 4 FAIL còn lại chỉ là hệ quả của (1) — cùng một transaction bị rollback nên lượt làm vẫn `SUBMITTED`.
+
+**Kết luận:** sau khi sửa, chạy lại trên đúng DB cũ (không reset) → **54/54 PASS**. Phase 2B nghiệm thu.
 
 Kiểm tra API end-to-end: `./scripts/smoke-test.sh` (health, đăng nhập 2 vai trò, phân quyền
 giáo viên/học sinh, chủ đề nháp bị ẩn với học sinh, 401/403, thông báo).
