@@ -72,7 +72,7 @@ except Exception:
 jfield() {
   python3 -c 'import json,sys
 try:
-    print(json.load(sys.stdin)["data"][sys.argv[1]][sys.argv[2]])
+    print(json.load(sys.stdin)["data"][int(sys.argv[1])][sys.argv[2]])
 except Exception:
     print("ERR")' "$1" "$2"
 }
@@ -87,12 +87,22 @@ except Exception:
 
 jpick() {
   python3 -c 'import json,sys
-key, want = sys.argv[1], sys.argv[2]
+want = sys.argv[1]
 try:
     items = json.load(sys.stdin)["data"]
     print([i["id"] for i in items if i["status"] == want][0])
 except Exception:
-    print("ERR")' "$1" "$2"
+    print("ERR")' "$1"
+}
+
+jpick_not() {
+  python3 -c 'import json,sys
+want = sys.argv[1]
+try:
+    items = json.load(sys.stdin)["data"]
+    print([i["id"] for i in items if i["status"] != want][0])
+except Exception:
+    print("ERR")' "$1"
 }
 
 echo "== EducMind smoke test — $BASE_URL =="
@@ -118,12 +128,7 @@ TOPICS_TEACHER="$(api GET "$TEACHER_TOKEN" "/api/v1/courses/$COURSE_ID/topics")"
 check "giao vien thay 2 chu de" "2" "$(printf '%s' "$TOPICS_TEACHER" | jlen)"
 
 PUBLISHED_TOPIC="$(printf '%s' "$TOPICS_TEACHER" | jpick PUBLISHED)"
-DRAFT_TOPIC="$(printf '%s' "$TOPICS_TEACHER" | python3 -c 'import json,sys
-try:
-    items = json.load(sys.stdin)["data"]
-    print([i["id"] for i in items if i["status"] != "PUBLISHED"][0])
-except Exception:
-    print("ERR")')"
+DRAFT_TOPIC="$(printf '%s' "$TOPICS_TEACHER" | jpick_not PUBLISHED)"
 echo "      topicPublished = $PUBLISHED_TOPIC"
 echo "      topicDraft     = $DRAFT_TOPIC"
 
