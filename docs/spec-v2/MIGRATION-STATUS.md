@@ -74,7 +74,21 @@ sau khi đã viết lại code.
 | Khởi động | Tomcat 8080, không còn user in-memory mặc định |
 | Smoke test Phase 1 | 19/19 PASS (`scripts/smoke-test.sh`) |
 | Phase 2A | 32/32 check PASS (`scripts/smoke-test.sh`) |
-| Phase 2B mới | đã viết code, **chưa chạy** — cần build + chạy smoke test (54 check) |
+| Phase 2B (lần chạy 1) | 48/54 PASS — 6 FAIL, xem ghi chú bên dưới |
+| Phase 2B (sau khi sửa) | **chưa chạy lại** — cần build + `./scripts/smoke-test.sh` (kỳ vọng 54/54) |
+
+**Ghi chú lần chạy 2B đầu tiên (2026-11-10):**
+
+1. Lỗi thật: `PATCH /attempts/{id}/answers/{questionId}/grade` trả 500 khi chấm câu tự luận cuối cùng.
+   Nguyên nhân: `AttemptFinalizer` đặt trạng thái `GRADED` trong bộ nhớ rồi ghi `learning_evidence`
+   ngay, nhưng trigger `trg_check_evidence_source` (V7) kiểm tra **dữ liệu trong DB** và chỉ chấp nhận
+   bằng chứng `ASSESSMENT` khi `assessment_attempts.status = 'GRADED'` → `RAISE EXCEPTION`.
+   Cách sửa: `attemptRepository.saveAndFlush(attempt)` trước `recordEvidence(...)`, và gán
+   `submittedAt` cho bài chỉ có trắc nghiệm (chấm xong ngay khi nộp).
+2. Lỗi script: check "hoc sinh doc duoc thong bao" kỳ vọng `unreadCount = 0`, chỉ đúng trên DB trống
+   (mỗi lần chạy smoke trước đó để lại thông báo `NEW_ASSIGNMENT_PUBLISHED`, `ASSIGNMENT_GRADED`).
+   Đã đổi thành kiểm tra endpoint trả 200 + `unreadCount` là số nguyên không âm.
+3. 4 FAIL còn lại chỉ là hệ quả của (1) — cùng một transaction bị rollback nên lượt làm vẫn `SUBMITTED`.
 
 Kiểm tra API end-to-end: `./scripts/smoke-test.sh` (health, đăng nhập 2 vai trò, phân quyền
 giáo viên/học sinh, chủ đề nháp bị ẩn với học sinh, 401/403, thông báo).

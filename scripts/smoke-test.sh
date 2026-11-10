@@ -197,8 +197,14 @@ curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/v1/auth/login" \
   -H 'Content-Type: application/json' -d '{"email":"teacher@educmind.vn","password":"sai"}' > "$LAST_STATUS"
 check "sai mat khau tra 401" "401" "$(cat "$LAST_STATUS")"
 
-check "hoc sinh doc duoc thong bao" "0" \
-  "$(api GET "$STUDENT_TOKEN" /api/v1/me/notifications/unread-count | jsfield unreadCount)"
+api GET "$STUDENT_TOKEN" /api/v1/me/notifications/unread-count > /dev/null
+check "hoc sinh doc duoc thong bao" "1" "$(python3 -c 'import json,sys
+try:
+    body = json.load(open(sys.argv[1]))
+    count = body["data"]["unreadCount"]
+    print(1 if body.get("success") and isinstance(count, int) and count >= 0 else 0)
+except Exception:
+    print("ERR")' "$LAST_BODY")"
 
 echo
 echo "== Phase 2: bai tap (US-T03/T04, US-S02/S04/S07) =="

@@ -7,6 +7,7 @@ import com.educmind.assessment.entity.Question;
 import com.educmind.assessment.entity.QuestionObjective;
 import com.educmind.assessment.entity.QuestionType;
 import com.educmind.assessment.entity.SubmissionAnswer;
+import com.educmind.assessment.repository.AssessmentAttemptRepository;
 import com.educmind.assessment.repository.AssessmentQuestionRepository;
 import com.educmind.assessment.repository.QuestionObjectiveRepository;
 import com.educmind.assessment.repository.QuestionRepository;
@@ -37,6 +38,7 @@ import java.util.UUID;
 @Component
 public class AttemptFinalizer {
 
+    private final AssessmentAttemptRepository attemptRepository;
     private final AssessmentQuestionRepository assessmentQuestionRepository;
     private final QuestionRepository questionRepository;
     private final QuestionObjectiveRepository questionObjectiveRepository;
@@ -44,12 +46,14 @@ public class AttemptFinalizer {
     private final LearningEvidencePort evidencePort;
     private final JsonCodec codec;
 
-    public AttemptFinalizer(AssessmentQuestionRepository assessmentQuestionRepository,
+    public AttemptFinalizer(AssessmentAttemptRepository attemptRepository,
+                            AssessmentQuestionRepository assessmentQuestionRepository,
                             QuestionRepository questionRepository,
                             QuestionObjectiveRepository questionObjectiveRepository,
                             SubmissionAnswerRepository answerRepository,
                             LearningEvidencePort evidencePort,
                             JsonCodec codec) {
+        this.attemptRepository = attemptRepository;
         this.assessmentQuestionRepository = assessmentQuestionRepository;
         this.questionRepository = questionRepository;
         this.questionObjectiveRepository = questionObjectiveRepository;
@@ -126,7 +130,15 @@ public class AttemptFinalizer {
                 total = total.add(answer.getScore());
             }
         }
-        attempt.markGraded(total, OffsetDateTime.now());
+        OffsetDateTime now = OffsetDateTime.now();
+        if (attempt.getSubmittedAt() == null) {
+            // Bài chỉ có trắc nghiệm: chấm xong ngay khi nộp, vẫn phải ghi nhận thời điểm nộp.
+            attempt.markSubmitted(now);
+        }
+        attempt.markGraded(total, now);
+        // Trigger trg_check_evidence_source chỉ cho ghi bằng chứng ASSESSMENT khi bản ghi
+        // assessment_attempts trong DB đã ở trạng thái GRADED → phải flush trước khi ghi evidence.
+        attemptRepository.saveAndFlush(attempt);
         recordEvidence(attempt, links, answers);
         return true;
     }
