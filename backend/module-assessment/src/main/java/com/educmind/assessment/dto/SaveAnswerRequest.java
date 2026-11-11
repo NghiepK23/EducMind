@@ -1,29 +1,29 @@
 package com.educmind.assessment.dto;
 
-import jakarta.validation.constraints.NotNull;
+import java.util.List;
 
-import java.util.UUID;
-
+/** US-S03 AC-S03.3: lưu câu trả lời trong quá trình làm bài. */
 public class SaveAnswerRequest {
 
-    @NotNull(message = "questionId không được để trống")
-    private UUID questionId;
+    /** Trắc nghiệm: chỉ số phương án đã chọn. */
+    private List<Integer> selectedOptionIndexes;
 
-    private Object studentAnswer;
+    /** Tự luận / trả lời ngắn. */
+    private String text;
 
-    public UUID getQuestionId() {
-        return questionId;
+    public List<Integer> getSelectedOptionIndexes() {
+        return selectedOptionIndexes;
     }
 
-    public void setQuestionId(UUID questionId) {
-        this.questionId = questionId;
+    public void setSelectedOptionIndexes(List<Integer> selectedOptionIndexes) {
+        this.selectedOptionIndexes = selectedOptionIndexes;
     }
 
-    public Object getStudentAnswer() {
-        return studentAnswer;
+    public String getText() {
+        return text;
     }
 
-    public void setStudentAnswer(Object studentAnswer) {
-        this.studentAnswer = studentAnswer;
+    public void setText(String text) {
+        this.text = text;
     }
 }

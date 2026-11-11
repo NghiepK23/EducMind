@@ -2,240 +2,285 @@ package com.educmind.assessment.service;
 
 import com.educmind.assessment.dto.CreateQuestionRequest;
 import com.educmind.assessment.dto.QuestionResponse;
-import com.educmind.assessment.dto.ReviewQuestionRequest;
 import com.educmind.assessment.dto.UpdateQuestionRequest;
+import com.educmind.assessment.entity.DifficultyLevel;
 import com.educmind.assessment.entity.Question;
-import com.educmind.assessment.entity.QuestionSource;
+import com.educmind.assessment.entity.QuestionObjective;
+import com.educmind.assessment.entity.QuestionType;
+import com.educmind.assessment.repository.AssessmentAttemptRepository;
+import com.educmind.assessment.repository.AssessmentQuestionRepository;
+import com.educmind.assessment.repository.QuestionObjectiveRepository;
 import com.educmind.assessment.repository.QuestionRepository;
 import com.educmind.common.exception.BusinessException;
-import com.educmind.common.port.CourseAccessPort;
-import com.educmind.common.port.LessonAccessPort;
+import com.educmind.common.port.CourseContentPort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 
-import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
- * Logic nghiệp vụ Question Bank (ngân hàng câu hỏi) — Module04_Assignment_Assessment_FINAL.md,
- * PHẦN E (E.4-E.9).
- *
- * Authorization: mọi hành động (tạo/sửa/xóa/review) — owner HOẶC đồng giảng dạy
- * course (courseAccessPort.isOwnerOrCoTeacher), ngang quyền — nhất quán nguyên tắc
- * đã áp dụng cho toàn bộ Module 4 (xem AssignmentService, module-assignment).
- *
- * [ĐÃ SỬA — V5__module_analytics_lo_id_fix.sql] learningObjectiveId (UUID) != null
- * BẮT BUỘC kéo theo lessonId != null — validate ở đây (createQuestion/updateQuestion),
- * entity Question chỉ là data holder thuần túy, không tự validate. Việc objectiveId
- * có thực sự thuộc đúng lesson được kiểm tra qua LessonAccessPort (assertObjectiveBelongsToLesson).
- *
- * Câu hỏi tạo thủ công qua Service này LUÔN source=MANUAL (AI sinh câu hỏi là việc
- * của Module 7 — AI Teacher Assistant, chưa code, sẽ ghi thẳng qua QuestionRepository
- * với source=AI_GENERATED, review_status=APPROVED theo PATCH_4Decisions PATCH 1).
+ * US-T05 — ngân hàng câu hỏi gắn mục tiêu học tập.
+ * AC-T05.1 đủ phương án + đáp án, AC-T05.2 nguồn "tự soạn", AC-T05.3 mục tiêu cùng khóa,
+ * AC-T05.5 không trùng mục tiêu, AC-T05.6 được phép không gắn mục tiêu.
+ * AC-T11.4 chặn sửa nội dung câu hỏi đã dùng trong bài kiểm tra có lượt làm.
  */
 @Service
 public class QuestionService {
 
-    private static final String ACTION_APPROVE = "APPROVE";
-    private static final String ACTION_REJECT = "REJECT";
-
     private final QuestionRepository questionRepository;
-    private final CourseAccessPort courseAccessPort;
-    private final LessonAccessPort lessonAccessPort;
+    private final QuestionObjectiveRepository questionObjectiveRepository;
+    private final AssessmentQuestionRepository assessmentQuestionRepository;
+    private final AssessmentAttemptRepository attemptRepository;
+    private final CourseContentPort contentPort;
+    private final AssessmentPermission permission;
+    private final JsonCodec codec;
 
-    public QuestionService(QuestionRepository questionRepository, CourseAccessPort courseAccessPort,
-                           LessonAccessPort lessonAccessPort) {
+    public QuestionService(QuestionRepository questionRepository,
+                           QuestionObjectiveRepository questionObjectiveRepository,
+                           AssessmentQuestionRepository assessmentQuestionRepository,
+                           AssessmentAttemptRepository attemptRepository,
+                           CourseContentPort contentPort,
+                           AssessmentPermission permission,
+                           JsonCodec codec) {
         this.questionRepository = questionRepository;
-        this.courseAccessPort = courseAccessPort;
-        this.lessonAccessPort = lessonAccessPort;
+        this.questionObjectiveRepository = questionObjectiveRepository;
+        this.assessmentQuestionRepository = assessmentQuestionRepository;
+        this.attemptRepository = attemptRepository;
+        this.contentPort = contentPort;
+        this.permission = permission;
+        this.codec = codec;
     }
 
-    /** POST /api/v1/courses/{id}/questions — owner/đồng giảng dạy. */
     @Transactional
-    public QuestionResponse createQuestion(UUID actorId, UUID courseId, CreateQuestionRequest request) {
-        assertCanManage(actorId, courseId);
-        assertLessonRequiredWhenObjectiveIdPresent(request.getLearningObjectiveId(), request.getLessonId());
-        assertLessonBelongsToCourse(request.getLessonId(), courseId);
-        assertObjectiveBelongsToLesson(request.getLessonId(), request.getLearningObjectiveId());
+    public QuestionResponse create(UUID teacherId, UUID courseId, CreateQuestionRequest request) {
+        permission.requireManagedCourse(teacherId, courseId);
 
-        Question question = new Question(courseId, request.getQuestionText(), request.getQuestionType(),
-                request.getDifficulty(), actorId);
-        question.setLessonId(request.getLessonId());
-        question.setCognitiveLevel(request.getCognitiveLevel());
-        question.setLearningObjectiveId(request.getLearningObjectiveId());
-        question.setOptions(request.getOptions());
-        question.setCorrectAnswer(request.getCorrectAnswer());
-        question.setExplanation(request.getExplanation());
-        question.setSource(QuestionSource.MANUAL);
+        QuestionType type = parseType(request.getType());
+        DifficultyLevel difficulty = parseDifficulty(request.getDifficulty());
+        validateChoice(type, request.getOptions(), request.getCorrectOptionIndexes());
+
+        String optionsJson = type.isChoice() ? codec.write(request.getOptions()) : null;
+        String correctJson;
+        if (type.isChoice()) {
+            correctJson = codec.write(request.getCorrectOptionIndexes());
+        } else {
+            correctJson = request.getExpectedAnswer() == null || request.getExpectedAnswer().isBlank()
+                    ? null
+                    : codec.writeText(request.getExpectedAnswer().trim());
+        }
+
+        Question question = questionRepository.save(new Question(courseId,
+                request.getContent().trim(), type, difficulty,
+                blankToNull(request.getBloomLevel()), optionsJson, correctJson, teacherId));
+
+        replaceObjectives(question.getId(), courseId, request.getObjectiveIds());
+        return toResponse(question);
+    }
+
+    @Transactional(readOnly = true)
+    public List<QuestionResponse> list(UUID teacherId, UUID courseId, String type, String difficulty) {
+        permission.requireManagedCourse(teacherId, courseId);
+
+        List<Question> questions;
+        if (type != null && !type.isBlank()) {
+            questions = questionRepository.findByCourseIdAndTypeAndDeletedAtIsNullOrderByCreatedAtDesc(
+                    courseId, parseType(type));
+        } else if (difficulty != null && !difficulty.isBlank()) {
+            questions = questionRepository.findByCourseIdAndDifficultyAndDeletedAtIsNullOrderByCreatedAtDesc(
+                    courseId, parseDifficulty(difficulty));
+        } else {
+            questions = questionRepository.findByCourseIdAndDeletedAtIsNullOrderByCreatedAtDesc(courseId);
+        }
+
+        List<QuestionResponse> result = new ArrayList<>();
+        for (Question question : questions) {
+            result.add(toResponse(question));
+        }
+        return result;
+    }
+
+    @Transactional(readOnly = true)
+    public QuestionResponse get(UUID actorId, String role, UUID questionId) {
+        Question question = requireQuestion(questionId);
+        if (AssessmentPermission.isTeacher(role)) {
+            permission.requireManagedCourse(actorId, question.getCourseId());
+        }
+        return toResponse(question);
+    }
+
+    @Transactional
+    public QuestionResponse update(UUID teacherId, UUID questionId, UpdateQuestionRequest request) {
+        Question question = requireQuestion(questionId);
+        permission.requireManagedCourse(teacherId, question.getCourseId());
+
+        boolean touchesContent = request.getContent() != null
+                || request.getType() != null
+                || request.getOptions() != null
+                || request.getCorrectOptionIndexes() != null
+                || request.getExpectedAnswer() != null;
+
+        if (touchesContent && isUsedInAssessmentWithAttempts(questionId)) {
+            throw new BusinessException("QUESTION_LOCKED",
+                    "Câu hỏi đã được dùng trong bài kiểm tra có lượt làm, chỉ được sửa độ khó và mức Bloom",
+                    HttpStatus.CONFLICT);
+        }
+
+        QuestionType type = request.getType() == null ? question.getType() : parseType(request.getType());
+        DifficultyLevel difficulty = request.getDifficulty() == null
+                ? question.getDifficulty()
+                : parseDifficulty(request.getDifficulty());
+
+        if (touchesContent) {
+            List<String> options = request.getOptions() != null
+                    ? request.getOptions()
+                    : codec.readStringList(question.getOptions());
+            List<Integer> correct = request.getCorrectOptionIndexes() != null
+                    ? request.getCorrectOptionIndexes()
+                    : codec.readIntList(question.getCorrectAnswer());
+            validateChoice(type, options, correct);
+
+            String content = request.getContent() == null ? question.getContent() : request.getContent().trim();
+            String optionsJson = type.isChoice() ? codec.write(options) : null;
+            String correctJson;
+            if (type.isChoice()) {
+                correctJson = codec.write(correct);
+            } else {
+                String expected = request.getExpectedAnswer();
+                correctJson = expected == null || expected.isBlank() ? null : codec.writeText(expected.trim());
+            }
+            question.update(content, type, difficulty, blankToNull(request.getBloomLevel()),
+                    optionsJson, correctJson, teacherId);
+        } else {
+            question.updateMetadata(difficulty, blankToNull(request.getBloomLevel()), teacherId);
+        }
 
         question = questionRepository.save(question);
-        return toResponse(question);
-    }
 
-    /** GET /api/v1/courses/{id}/questions — TEACHER (owner/đồng giảng dạy) xem ngân hàng câu hỏi. */
-    @Transactional(readOnly = true)
-    public List<QuestionResponse> listQuestions(UUID actorId, UUID courseId) {
-        assertCanManage(actorId, courseId);
-        return questionRepository.findByCourseIdAndDeletedAtIsNullOrderByCreatedAtDesc(courseId).stream()
-                .map(this::toResponse)
-                .toList();
-    }
-
-    /** PATCH /api/v1/questions/{id} — owner/đồng giảng dạy. */
-    @Transactional
-    public QuestionResponse updateQuestion(UUID actorId, UUID questionId, UpdateQuestionRequest request) {
-        Question question = loadQuestionOrThrow(questionId);
-        assertCanManage(actorId, question.getCourseId());
-
-        UUID lessonId = request.getLessonId() != null ? request.getLessonId() : question.getLessonId();
-        UUID objectiveId = request.getLearningObjectiveId() != null
-                ? request.getLearningObjectiveId() : question.getLearningObjectiveId();
-        assertLessonRequiredWhenObjectiveIdPresent(objectiveId, lessonId);
-        if (request.getLessonId() != null) {
-            assertLessonBelongsToCourse(request.getLessonId(), question.getCourseId());
-        }
-        if (request.getLessonId() != null || request.getLearningObjectiveId() != null) {
-            assertObjectiveBelongsToLesson(lessonId, objectiveId);
-        }
-
-        if (request.getLessonId() != null) {
-            question.setLessonId(request.getLessonId());
-        }
-        if (request.getQuestionText() != null) {
-            if (!StringUtils.hasText(request.getQuestionText())) {
-                throw new BusinessException("VALIDATION_ERROR", "questionText không được để trống",
-                        HttpStatus.UNPROCESSABLE_ENTITY);
+        if (request.getObjectiveIds() != null) {
+            if (isUsedInAssessmentWithAttempts(questionId)) {
+                throw new BusinessException("QUESTION_LOCKED",
+                        "Câu hỏi đã được dùng trong bài kiểm tra có lượt làm, không thể đổi mục tiêu",
+                        HttpStatus.CONFLICT);
             }
-            question.setQuestionText(request.getQuestionText());
+            replaceObjectives(questionId, question.getCourseId(), request.getObjectiveIds());
         }
-        if (request.getQuestionType() != null) {
-            question.setQuestionType(request.getQuestionType());
-        }
-        if (request.getDifficulty() != null) {
-            question.setDifficulty(request.getDifficulty());
-        }
-        if (request.getCognitiveLevel() != null) {
-            question.setCognitiveLevel(request.getCognitiveLevel());
-        }
-        if (request.getLearningObjectiveId() != null) {
-            question.setLearningObjectiveId(request.getLearningObjectiveId());
-        }
-        if (request.getOptions() != null) {
-            question.setOptions(request.getOptions());
-        }
-        if (request.getCorrectAnswer() != null) {
-            question.setCorrectAnswer(request.getCorrectAnswer());
-        }
-        if (request.getExplanation() != null) {
-            question.setExplanation(request.getExplanation());
-        }
-
-        question = questionRepository.saveAndFlush(question);
         return toResponse(question);
     }
 
-    /**
-     * PATCH /api/v1/questions/{id}/review — owner/đồng giảng dạy. Sau PATCH_4Decisions
-     * PATCH 1, chỉ còn ý nghĩa thực tế cho source=MANUAL (E.5bis).
-     */
+    /** AC-T12.2: xoá khỏi ngân hàng không làm mất câu hỏi trong bài kiểm tra đã tạo. */
     @Transactional
-    public QuestionResponse reviewQuestion(UUID actorId, UUID questionId, ReviewQuestionRequest request) {
-        Question question = loadQuestionOrThrow(questionId);
-        assertCanManage(actorId, question.getCourseId());
-
-        String action = request.getAction() == null ? "" : request.getAction().trim().toUpperCase();
-        if (ACTION_APPROVE.equals(action)) {
-            question.approve();
-        } else if (ACTION_REJECT.equals(action)) {
-            question.reject();
-        } else {
-            throw new BusinessException("VALIDATION_ERROR",
-                    "action phải là APPROVE hoặc REJECT", HttpStatus.UNPROCESSABLE_ENTITY);
-        }
-
-        question = questionRepository.saveAndFlush(question);
-        return toResponse(question);
+    public void delete(UUID teacherId, UUID questionId) {
+        Question question = requireQuestion(questionId);
+        permission.requireManagedCourse(teacherId, question.getCourseId());
+        question.markDeleted(teacherId);
+        questionRepository.save(question);
     }
 
-    /** DELETE /api/v1/questions/{id} — soft-delete, owner/đồng giảng dạy. */
-    @Transactional
-    public QuestionResponse deleteQuestion(UUID actorId, UUID questionId) {
-        Question question = loadQuestionOrThrow(questionId);
-        assertCanManage(actorId, question.getCourseId());
-
-        question.setDeletedAt(OffsetDateTime.now());
-        question = questionRepository.saveAndFlush(question);
-        return toResponse(question);
+    /** Tiện ích cho module khác: id mục tiêu của một câu hỏi. */
+    @Transactional(readOnly = true)
+    public List<UUID> objectiveIds(UUID questionId) {
+        List<UUID> ids = new ArrayList<>();
+        for (QuestionObjective qo : questionObjectiveRepository.findByIdQuestionId(questionId)) {
+            ids.add(qo.getObjectiveId());
+        }
+        return ids;
     }
 
-    // ------------------------------------------------------------------
-    // Helpers riêng — dùng chung với AssessmentService qua package-private nếu cần sau này
-    // ------------------------------------------------------------------
-
-    private void assertCanManage(UUID actorId, UUID courseId) {
-        if (!courseAccessPort.isOwnerOrCoTeacher(actorId, courseId)) {
-            throw new BusinessException("NOT_COURSE_OWNER",
-                    "Bạn không có quyền quản lý course này", HttpStatus.FORBIDDEN);
-        }
-    }
-
-    /**
-     * [ĐÃ SỬA — V5__module_analytics_lo_id_fix.sql] learningObjectiveId != null BẮT BUỘC
-     * kéo theo lessonId != null.
-     */
-    private void assertLessonRequiredWhenObjectiveIdPresent(UUID learningObjectiveId, UUID lessonId) {
-        if (learningObjectiveId != null && lessonId == null) {
-            throw new BusinessException("VALIDATION_ERROR",
-                    "learningObjectiveId khác NULL bắt buộc phải có lessonId đi kèm",
-                    HttpStatus.UNPROCESSABLE_ENTITY);
-        }
-    }
-
-    private void assertObjectiveBelongsToLesson(UUID lessonId, UUID learningObjectiveId) {
-        if (learningObjectiveId == null) {
-            return;
-        }
-        if (!lessonAccessPort.objectiveBelongsToLesson(lessonId, learningObjectiveId)) {
-            throw new BusinessException("VALIDATION_ERROR",
-                    "learningObjectiveId không thuộc lesson này",
-                    HttpStatus.UNPROCESSABLE_ENTITY);
-        }
-    }
-
-    /**
-     * Nếu có lessonId thì lesson đó phải thuộc đúng course của câu hỏi.
-     * lessonId == null (câu hỏi tổng hợp toàn course) thì bỏ qua.
-     */
-    private void assertLessonBelongsToCourse(UUID lessonId, UUID courseId) {
-        if (lessonId == null) {
-            return;
-        }
-        if (!lessonAccessPort.lessonBelongsToCourse(lessonId, courseId)) {
-            throw new BusinessException("VALIDATION_ERROR",
-                    "lessonId không thuộc course này",
-                    HttpStatus.UNPROCESSABLE_ENTITY);
-        }
-    }
-
-    private Question loadQuestionOrThrow(UUID questionId) {
+    Question requireQuestion(UUID questionId) {
         return questionRepository.findByIdAndDeletedAtIsNull(questionId)
-                .orElseThrow(() -> new BusinessException("QUESTION_NOT_FOUND",
-                        "Không tìm thấy câu hỏi", HttpStatus.NOT_FOUND));
+                .orElseThrow(() -> permission.notFound("Không tìm thấy câu hỏi"));
     }
 
-    private QuestionResponse toResponse(Question q) {
-        return new QuestionResponse(
-                q.getId(), q.getCourseId(), q.getLessonId(), q.getQuestionText(),
-                q.getQuestionType() != null ? q.getQuestionType().name() : null,
-                q.getDifficulty() != null ? q.getDifficulty().name() : null,
-                q.getCognitiveLevel() != null ? q.getCognitiveLevel().name() : null,
-                q.getLearningObjectiveId(), q.getOptions(), q.getCorrectAnswer(), q.getExplanation(),
-                q.getSource() != null ? q.getSource().name() : null,
-                q.getReviewStatus() != null ? q.getReviewStatus().name() : null,
-                q.getCreatedBy(), q.getCreatedAt(), q.getUpdatedAt(), q.getDeletedAt()
-        );
+    private boolean isUsedInAssessmentWithAttempts(UUID questionId) {
+        for (var link : assessmentQuestionRepository.findByQuestionId(questionId)) {
+            if (attemptRepository.countByAssessmentId(link.getAssessmentId()) > 0) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void replaceObjectives(UUID questionId, UUID courseId, List<UUID> objectiveIds) {
+        questionObjectiveRepository.deleteByIdQuestionId(questionId);
+        if (objectiveIds == null || objectiveIds.isEmpty()) {
+            return;
+        }
+        Set<UUID> unique = new LinkedHashSet<>(objectiveIds);
+        Set<UUID> valid = new LinkedHashSet<>();
+        for (CourseContentPort.ObjectiveRef ref : contentPort.findObjectives(unique)) {
+            if (ref.courseId().equals(courseId)) {
+                valid.add(ref.id());
+            }
+        }
+        if (valid.size() != unique.size()) {
+            throw new BusinessException("OBJECTIVE_NOT_IN_COURSE",
+                    "Có mục tiêu học tập không thuộc khóa học này", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+        for (UUID objectiveId : valid) {
+            questionObjectiveRepository.save(new QuestionObjective(questionId, objectiveId));
+        }
+    }
+
+    private void validateChoice(QuestionType type, List<String> options, List<Integer> correct) {
+        if (!type.isChoice()) {
+            return;
+        }
+        if (options == null || options.size() < 2) {
+            throw new BusinessException("QUESTION_OPTIONS_INVALID",
+                    "Câu hỏi trắc nghiệm phải có ít nhất 2 phương án", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+        if (correct == null || correct.isEmpty()) {
+            throw new BusinessException("QUESTION_ANSWER_INVALID",
+                    "Câu hỏi trắc nghiệm phải có đáp án đúng", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+        if (type == QuestionType.TRUE_FALSE && options.size() != 2) {
+            throw new BusinessException("QUESTION_OPTIONS_INVALID",
+                    "Câu hỏi đúng/sai phải có đúng 2 phương án", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+        if (type != QuestionType.MULTIPLE_CHOICE && correct.size() != 1) {
+            throw new BusinessException("QUESTION_ANSWER_INVALID",
+                    "Loại câu hỏi này chỉ được có một đáp án đúng", HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+        for (Integer index : correct) {
+            if (index == null || index < 0 || index >= options.size()) {
+                throw new BusinessException("QUESTION_ANSWER_INVALID",
+                        "Chỉ số đáp án đúng không hợp lệ", HttpStatus.UNPROCESSABLE_ENTITY);
+            }
+        }
+    }
+
+    private QuestionType parseType(String value) {
+        try {
+            return QuestionType.valueOf(value.trim().toUpperCase());
+        } catch (RuntimeException e) {
+            throw new BusinessException("INVALID_QUESTION_TYPE",
+                    "Loại câu hỏi không hợp lệ: " + value, HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+    }
+
+    private DifficultyLevel parseDifficulty(String value) {
+        try {
+            return DifficultyLevel.valueOf(value.trim().toUpperCase());
+        } catch (RuntimeException e) {
+            throw new BusinessException("INVALID_DIFFICULTY",
+                    "Độ khó không hợp lệ: " + value, HttpStatus.UNPROCESSABLE_ENTITY);
+        }
+    }
+
+    private String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    QuestionResponse toResponse(Question question) {
+        return new QuestionResponse(question.getId(), question.getCourseId(), question.getContent(),
+                question.getType().name(), question.getDifficulty().name(), question.getBloomLevel(),
+                question.getSource().name(), codec.readStringList(question.getOptions()),
+                codec.readIntList(question.getCorrectAnswer()), codec.readText(question.getCorrectAnswer()),
+                objectiveIds(question.getId()), question.getCreatedAt());
     }
 }

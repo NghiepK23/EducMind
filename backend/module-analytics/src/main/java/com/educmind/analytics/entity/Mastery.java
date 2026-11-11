@@ -12,21 +12,14 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Entity ứng với bảng `mastery` — V7__module_analytics_tables.sql,
- * Module05_LearningEvidence_Analytics_FINAL.md mục 3.2 / 4.3.
+ * Bảng mastery (Spec v2, mục F — bảng 19; US-H01, US-S05).
  *
- * Mỗi dòng ứng với 1 (studentId, lessonId, learningObjectiveId) — unique ở DB.
- * Không có FK cứng tới objective vì nó nằm trong JSONB của lessons.
- * Được tính lại (upsert) mỗi khi có evidence mới cho đúng khóa đó.
+ * Mỗi dòng = mức nắm vững của MỘT học sinh với MỘT mục tiêu, tính lại mỗi khi có
+ * bằng chứng mới. Không có dữ liệu đánh giá ⇒ không có dòng (API trả "Chưa có dữ liệu").
  */
 @Entity
 @Table(name = "mastery")
 public class Mastery {
-
-    public static final String CONFIDENCE_LOW = "LOW";
-    public static final String CONFIDENCE_MEDIUM = "MEDIUM";
-    public static final String CONFIDENCE_HIGH = "HIGH";
-    public static final String DEFAULT_METHOD = "RULE_V1_WEIGHTED_AVG_DECAY";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -35,35 +28,14 @@ public class Mastery {
     @Column(name = "student_id", nullable = false)
     private UUID studentId;
 
-    @Column(name = "lesson_id", nullable = false)
-    private UUID lessonId;
+    @Column(name = "objective_id", nullable = false)
+    private UUID objectiveId;
 
-    @Column(name = "learning_objective_id", nullable = false)
-    private UUID learningObjectiveId;
-
-    @Column(name = "course_id", nullable = false)
-    private UUID courseId;
-
-    @Column(name = "mastery_score", nullable = false, precision = 5, scale = 4)
+    @Column(name = "mastery_score", nullable = false, precision = 4, scale = 3)
     private BigDecimal masteryScore;
 
     @Column(name = "evidence_count", nullable = false)
     private int evidenceCount;
-
-    @Column(name = "confidence_level", nullable = false, length = 10)
-    private String confidenceLevel = CONFIDENCE_LOW;
-
-    @Column(name = "last_evidence_at")
-    private OffsetDateTime lastEvidenceAt;
-
-    @Column(name = "calculation_method", nullable = false, length = 50)
-    private String calculationMethod = DEFAULT_METHOD;
-
-    @Column(name = "computed_at", nullable = false)
-    private OffsetDateTime computedAt;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
@@ -71,33 +43,18 @@ public class Mastery {
     protected Mastery() {
     }
 
-    public Mastery(UUID studentId, UUID lessonId, UUID learningObjectiveId, UUID courseId,
-                   BigDecimal masteryScore, int evidenceCount, String confidenceLevel,
-                   OffsetDateTime lastEvidenceAt) {
+    public Mastery(UUID studentId, UUID objectiveId, BigDecimal masteryScore, int evidenceCount) {
         this.studentId = studentId;
-        this.lessonId = lessonId;
-        this.learningObjectiveId = learningObjectiveId;
-        this.courseId = courseId;
+        this.objectiveId = objectiveId;
         this.masteryScore = masteryScore;
         this.evidenceCount = evidenceCount;
-        this.confidenceLevel = confidenceLevel;
-        this.lastEvidenceAt = lastEvidenceAt;
-        OffsetDateTime now = OffsetDateTime.now();
-        this.computedAt = now;
-        this.createdAt = now;
-        this.updatedAt = now;
+        this.updatedAt = OffsetDateTime.now();
     }
 
-    /** Cập nhật kết quả sau mỗi lần tính lại mastery (upsert vào dòng đã tồn tại). */
-    public void applyRecomputation(BigDecimal masteryScore, int evidenceCount,
-                                   String confidenceLevel, OffsetDateTime lastEvidenceAt) {
+    public void update(BigDecimal masteryScore, int evidenceCount) {
         this.masteryScore = masteryScore;
         this.evidenceCount = evidenceCount;
-        this.confidenceLevel = confidenceLevel;
-        this.lastEvidenceAt = lastEvidenceAt;
-        OffsetDateTime now = OffsetDateTime.now();
-        this.computedAt = now;
-        this.updatedAt = now;
+        this.updatedAt = OffsetDateTime.now();
     }
 
     public UUID getId() {
@@ -108,16 +65,8 @@ public class Mastery {
         return studentId;
     }
 
-    public UUID getLessonId() {
-        return lessonId;
-    }
-
-    public UUID getLearningObjectiveId() {
-        return learningObjectiveId;
-    }
-
-    public UUID getCourseId() {
-        return courseId;
+    public UUID getObjectiveId() {
+        return objectiveId;
     }
 
     public BigDecimal getMasteryScore() {
@@ -126,26 +75,6 @@ public class Mastery {
 
     public int getEvidenceCount() {
         return evidenceCount;
-    }
-
-    public String getConfidenceLevel() {
-        return confidenceLevel;
-    }
-
-    public OffsetDateTime getLastEvidenceAt() {
-        return lastEvidenceAt;
-    }
-
-    public String getCalculationMethod() {
-        return calculationMethod;
-    }
-
-    public OffsetDateTime getComputedAt() {
-        return computedAt;
-    }
-
-    public OffsetDateTime getCreatedAt() {
-        return createdAt;
     }
 
     public OffsetDateTime getUpdatedAt() {

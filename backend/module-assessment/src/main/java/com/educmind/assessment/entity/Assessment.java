@@ -17,22 +17,9 @@ import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Entity ứng với bảng `assessments` — V4__module_assignment_assessment.sql,
- * Module04_Assignment_Assessment_FINAL.md mục E.4/E.5.
- *
- * {@link #courseId} là cross-module reference tới module-course (bảng courses).
- * {@link #createdBy} là cross-module reference sang module-auth (bảng users).
- *
- * KHÔNG có assessment_class (đã bỏ theo ghi chú đầu file V4) — opensAt/closesAt
- * là 1 mốc DUY NHẤT dùng chung cho toàn bộ course_members của course, không phải
- * theo từng lớp như spec Module04_FINAL.md mô tả ban đầu.
- *
- * {@link #blueprintConfig}: JSONB, hình dạng tự do theo ma trận đề (vd:
- * [{"objective":"LO02","difficulty":"MEDIUM","count":3}]) — dùng Object chung,
- * cùng lý do đã ghi ở Question.options/correctAnswer.
- *
- * {@link #publishedAt}: giữ nguyên pattern của Lesson.java (module-course) — chỉ
- * set 1 LẦN DUY NHẤT khi publish lần đầu, KHÔNG bị xóa về null khi unpublish.
+ * Bảng assessments (Spec v2 — bảng 14; US-T06, US-T13).
+ * Phạm vi: khóa học / chủ đề / bài học (không đồng thời).
+ * Tổng điểm tối đa = tổng weight của các câu hỏi (AC-T06.4) — tính động, không lưu cột.
  */
 @Entity
 @Table(name = "assessments")
@@ -42,46 +29,43 @@ public class Assessment {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "course_id", nullable = false, updatable = false)
+    @Column(name = "course_id", nullable = false)
     private UUID courseId;
 
-    @Column(nullable = false, length = 255)
+    @Column(name = "topic_id")
+    private UUID topicId;
+
+    @Column(name = "lesson_id")
+    private UUID lessonId;
+
+    @Column(nullable = false, length = 200)
     private String title;
 
-    @Column(columnDefinition = "TEXT")
-    private String description;
-
-    @Column(name = "duration_minutes")
-    private Integer durationMinutes;
+    @Column(name = "duration_minutes", nullable = false)
+    private int durationMinutes;
 
     @Column(name = "max_attempts", nullable = false)
-    private int maxAttempts = 1;
+    private int maxAttempts;
 
-    @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "blueprint_config", columnDefinition = "jsonb")
-    private Object blueprintConfig;
+    @Column(name = "open_at", nullable = false)
+    private OffsetDateTime openAt;
 
-    @Column(name = "opens_at")
-    private OffsetDateTime opensAt;
-
-    @Column(name = "closes_at")
-    private OffsetDateTime closesAt;
+    @Column(name = "close_at", nullable = false)
+    private OffsetDateTime closeAt;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "publish_status", nullable = false, length = 20)
-    private AssessmentPublishStatus publishStatus = AssessmentPublishStatus.DRAFT;
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
+    private AssessmentStatus status;
 
-    @Column(name = "published_at")
-    private OffsetDateTime publishedAt;
-
-    @Column(name = "created_by", nullable = false, updatable = false)
-    private UUID createdBy;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    @Column(name = "updated_by")
+    private UUID updatedBy;
 
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
@@ -89,44 +73,66 @@ public class Assessment {
     protected Assessment() {
     }
 
-    public Assessment(UUID courseId, String title, UUID createdBy) {
+    public Assessment(UUID courseId, String title, int durationMinutes, int maxAttempts,
+                      OffsetDateTime openAt, OffsetDateTime closeAt) {
         this.courseId = courseId;
         this.title = title;
-        this.createdBy = createdBy;
+        this.durationMinutes = durationMinutes;
+        this.maxAttempts = maxAttempts;
+        this.openAt = openAt;
+        this.closeAt = closeAt;
+        this.status = AssessmentStatus.DRAFT;
     }
 
     @PrePersist
-    protected void onCreate() {
+    void onCreate() {
         OffsetDateTime now = OffsetDateTime.now();
-        this.createdAt = now;
-        this.updatedAt = now;
+        createdAt = now;
+        updatedAt = now;
     }
 
     @PreUpdate
-    protected void onUpdate() {
-        this.updatedAt = OffsetDateTime.now();
+    void onUpdate() {
+        updatedAt = OffsetDateTime.now();
     }
 
-    /**
-     * [DECIDED — theo pattern Lesson.publish()] Chuyển sang PUBLISHED. publishedAt
-     * chỉ set nếu đang null (lần publish đầu tiên) — publish lại sau khi từng
-     * unpublish KHÔNG ghi đè mốc publish gốc.
-     */
-    public void publish() {
-        this.publishStatus = AssessmentPublishStatus.PUBLISHED;
-        if (this.publishedAt == null) {
-            this.publishedAt = OffsetDateTime.now();
+    public void update(String title, Integer durationMinutes, Integer maxAttempts,
+                       OffsetDateTime openAt, OffsetDateTime closeAt,
+                       UUID topicId, UUID lessonId, UUID actorId) {
+        if (title != null) {
+            this.title = title;
         }
+        if (durationMinutes != null) {
+            this.durationMinutes = durationMinutes;
+        }
+        if (maxAttempts != null) {
+            this.maxAttempts = maxAttempts;
+        }
+        if (openAt != null) {
+            this.openAt = openAt;
+        }
+        if (closeAt != null) {
+            this.closeAt = closeAt;
+        }
+        this.topicId = topicId;
+        this.lessonId = lessonId;
+        this.updatedBy = actorId;
     }
 
-    /** Chuyển về DRAFT. publishedAt GIỮ NGUYÊN, không set về null. */
-    public void unpublish() {
-        this.publishStatus = AssessmentPublishStatus.DRAFT;
+    public void publish(UUID actorId) {
+        this.status = AssessmentStatus.PUBLISHED;
+        this.updatedBy = actorId;
     }
 
-    // ------------------------------------------------------------------
-    // Getters & setters
-    // ------------------------------------------------------------------
+    public void unpublish(UUID actorId) {
+        this.status = AssessmentStatus.DRAFT;
+        this.updatedBy = actorId;
+    }
+
+    public void markDeleted(UUID actorId) {
+        this.deletedAt = OffsetDateTime.now();
+        this.updatedBy = actorId;
+    }
 
     public UUID getId() {
         return id;
@@ -136,87 +142,43 @@ public class Assessment {
         return courseId;
     }
 
+    public UUID getTopicId() {
+        return topicId;
+    }
+
+    public UUID getLessonId() {
+        return lessonId;
+    }
+
     public String getTitle() {
         return title;
     }
 
-    public void setTitle(String title) {
-        this.title = title;
-    }
-
-    public String getDescription() {
-        return description;
-    }
-
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public Integer getDurationMinutes() {
+    public int getDurationMinutes() {
         return durationMinutes;
-    }
-
-    public void setDurationMinutes(Integer durationMinutes) {
-        this.durationMinutes = durationMinutes;
     }
 
     public int getMaxAttempts() {
         return maxAttempts;
     }
 
-    public void setMaxAttempts(int maxAttempts) {
-        this.maxAttempts = maxAttempts;
+    public OffsetDateTime getOpenAt() {
+        return openAt;
     }
 
-    public Object getBlueprintConfig() {
-        return blueprintConfig;
+    public OffsetDateTime getCloseAt() {
+        return closeAt;
     }
 
-    public void setBlueprintConfig(Object blueprintConfig) {
-        this.blueprintConfig = blueprintConfig;
-    }
-
-    public OffsetDateTime getOpensAt() {
-        return opensAt;
-    }
-
-    public void setOpensAt(OffsetDateTime opensAt) {
-        this.opensAt = opensAt;
-    }
-
-    public OffsetDateTime getClosesAt() {
-        return closesAt;
-    }
-
-    public void setClosesAt(OffsetDateTime closesAt) {
-        this.closesAt = closesAt;
-    }
-
-    public AssessmentPublishStatus getPublishStatus() {
-        return publishStatus;
-    }
-
-    public OffsetDateTime getPublishedAt() {
-        return publishedAt;
-    }
-
-    public UUID getCreatedBy() {
-        return createdBy;
+    public AssessmentStatus getStatus() {
+        return status;
     }
 
     public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
 
-    public OffsetDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
     public OffsetDateTime getDeletedAt() {
         return deletedAt;
-    }
-
-    public void setDeletedAt(OffsetDateTime deletedAt) {
-        this.deletedAt = deletedAt;
     }
 }

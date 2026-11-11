@@ -1,105 +1,98 @@
 package com.educmind.assessment.dto;
 
-import com.educmind.assessment.entity.CognitiveLevel;
-import com.educmind.assessment.entity.Difficulty;
-import com.educmind.assessment.entity.QuestionType;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
+import java.util.List;
 import java.util.UUID;
 
+/** US-T05 (AC-T05.1 … AC-T05.6). */
 public class CreateQuestionRequest {
 
-    @NotBlank(message = "questionText không được để trống")
-    private String questionText;
+    @NotBlank(message = "Loại câu hỏi không được để trống")
+    private String type;
 
-    @NotNull(message = "questionType không được để trống")
-    private QuestionType questionType;
+    @NotBlank(message = "Độ khó không được để trống")
+    private String difficulty;
 
-    @NotNull(message = "difficulty không được để trống")
-    private Difficulty difficulty;
+    @Size(max = 30, message = "Mức Bloom tối đa 30 ký tự")
+    private String bloomLevel;
 
-    private CognitiveLevel cognitiveLevel;
+    @NotBlank(message = "Nội dung câu hỏi không được để trống")
+    private String content;
 
-    private UUID learningObjectiveId;
+    /** Phương án trả lời (chỉ với câu trắc nghiệm). */
+    private List<String> options;
 
-    private UUID lessonId;
+    /** Chỉ số các phương án đúng (SINGLE_CHOICE/TRUE_FALSE: đúng 1; MULTIPLE_CHOICE: ≥ 1). */
+    private List<Integer> correctOptionIndexes;
 
-    private Object options;
+    /** Đáp án tham khảo cho câu trả lời ngắn (không tự chấm). */
+    private String expectedAnswer;
 
-    private Object correctAnswer;
+    private List<UUID> objectiveIds;
 
-    private String explanation;
-
-    public String getQuestionText() {
-        return questionText;
+    public String getType() {
+        return type;
     }
 
-    public void setQuestionText(String questionText) {
-        this.questionText = questionText;
+    public void setType(String type) {
+        this.type = type;
     }
 
-    public QuestionType getQuestionType() {
-        return questionType;
-    }
-
-    public void setQuestionType(QuestionType questionType) {
-        this.questionType = questionType;
-    }
-
-    public Difficulty getDifficulty() {
+    public String getDifficulty() {
         return difficulty;
     }
 
-    public void setDifficulty(Difficulty difficulty) {
+    public void setDifficulty(String difficulty) {
         this.difficulty = difficulty;
     }
 
-    public CognitiveLevel getCognitiveLevel() {
-        return cognitiveLevel;
+    public String getBloomLevel() {
+        return bloomLevel;
     }
 
-    public void setCognitiveLevel(CognitiveLevel cognitiveLevel) {
-        this.cognitiveLevel = cognitiveLevel;
+    public void setBloomLevel(String bloomLevel) {
+        this.bloomLevel = bloomLevel;
     }
 
-    public UUID getLearningObjectiveId() {
-        return learningObjectiveId;
+    public String getContent() {
+        return content;
     }
 
-    public void setLearningObjectiveId(UUID learningObjectiveId) {
-        this.learningObjectiveId = learningObjectiveId;
+    public void setContent(String content) {
+        this.content = content;
     }
 
-    public UUID getLessonId() {
-        return lessonId;
-    }
-
-    public void setLessonId(UUID lessonId) {
-        this.lessonId = lessonId;
-    }
-
-    public Object getOptions() {
+    public List<String> getOptions() {
         return options;
     }
 
-    public void setOptions(Object options) {
+    public void setOptions(List<String> options) {
         this.options = options;
     }
 
-    public Object getCorrectAnswer() {
-        return correctAnswer;
+    public List<Integer> getCorrectOptionIndexes() {
+        return correctOptionIndexes;
     }
 
-    public void setCorrectAnswer(Object correctAnswer) {
-        this.correctAnswer = correctAnswer;
+    public void setCorrectOptionIndexes(List<Integer> correctOptionIndexes) {
+        this.correctOptionIndexes = correctOptionIndexes;
     }
 
-    public String getExplanation() {
-        return explanation;
+    public String getExpectedAnswer() {
+        return expectedAnswer;
     }
 
-    public void setExplanation(String explanation) {
-        this.explanation = explanation;
+    public void setExpectedAnswer(String expectedAnswer) {
+        this.expectedAnswer = expectedAnswer;
+    }
+
+    public List<UUID> getObjectiveIds() {
+        return objectiveIds;
+    }
+
+    public void setObjectiveIds(List<UUID> objectiveIds) {
+        this.objectiveIds = objectiveIds;
     }
 }

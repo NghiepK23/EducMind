@@ -1,27 +1,15 @@
 package com.educmind.course.dto;
 
-import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
-import java.util.ArrayList;
-import java.util.List;
-
-/**
- * Request tạo Lesson mới — POST /api/v1/courses/{id}/lessons.
- * learningObjectives mặc định rỗng (giáo viên có thể tạo lesson trước, thêm objective sau
- * qua updateLesson); orderIndex mặc định 0 (giáo viên có thể sắp lại thứ tự sau).
- */
 public class CreateLessonRequest {
 
-    @NotBlank(message = "title không được để trống")
+    @NotBlank(message = "Tiêu đề bài học không được để trống")
+    @Size(max = 200, message = "Tiêu đề bài học tối đa 200 ký tự")
     private String title;
 
     private String description;
-
-    @Valid
-    private List<LearningObjectiveInput> learningObjectives = new ArrayList<>();
-
-    private int orderIndex = 0;
 
     public String getTitle() {
         return title;
@@ -37,21 +25,5 @@ public class CreateLessonRequest {
 
     public void setDescription(String description) {
         this.description = description;
-    }
-
-    public List<LearningObjectiveInput> getLearningObjectives() {
-        return learningObjectives;
-    }
-
-    public void setLearningObjectives(List<LearningObjectiveInput> learningObjectives) {
-        this.learningObjectives = learningObjectives;
-    }
-
-    public int getOrderIndex() {
-        return orderIndex;
-    }
-
-    public void setOrderIndex(int orderIndex) {
-        this.orderIndex = orderIndex;
     }
 }

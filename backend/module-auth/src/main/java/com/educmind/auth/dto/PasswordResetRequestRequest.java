@@ -3,11 +3,10 @@ package com.educmind.auth.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 
-/** Request cho POST /api/v1/auth/password-reset/request. */
 public class PasswordResetRequestRequest {
 
-    @NotBlank(message = "email khong duoc de trong")
-    @Email(message = "email khong dung dinh dang")
+    @NotBlank(message = "Email không được để trống")
+    @Email(message = "Email không đúng định dạng")
     private String email;
 
     public String getEmail() {

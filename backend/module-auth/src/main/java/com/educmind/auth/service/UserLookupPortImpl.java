@@ -2,20 +2,17 @@ package com.educmind.auth.service;
 
 import com.educmind.auth.entity.User;
 import com.educmind.auth.repository.UserRepository;
-import com.educmind.auth.entity.UserStatus;
 import com.educmind.common.port.UserLookupPort;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * Implementation thật của UserLookupPort (định nghĩa ở educmind-common).
- * Adapter phía module-auth — nơi duy nhất được phép đọc trực tiếp entity User
- * để phục vụ nhu cầu tra cứu cross-module (hiện tại: module-schoolclass).
- *
- * Xem giải thích đầy đủ về "symmetric need" ở UserLookupPort javadoc.
- */
 @Component
 public class UserLookupPortImpl implements UserLookupPort {
 
@@ -27,18 +24,28 @@ public class UserLookupPortImpl implements UserLookupPort {
 
     @Override
     public Optional<UserSummary> findUserSummary(UUID userId) {
-        return userRepository.findById(userId)
-                .filter(user -> user.getDeletedAt() == null)
-                .map(this::toSummary);
+        return userRepository.findByIdAndDeletedAtIsNull(userId)
+                .map(u -> new UserSummary(u.getId(), u.getRole().name(), true));
     }
 
-    private UserSummary toSummary(User user) {
-        boolean active = user.getStatus() == UserStatus.ACTIVE;
-        return new UserSummary(
-                user.getId(),
-                user.getRole().name(),
-                user.getSchoolId(),
-                active
-        );
+    @Override
+    public List<UserDetail> findUserDetails(Collection<UUID> userIds) {
+        if (userIds == null || userIds.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, User> byId = new HashMap<>();
+        for (User u : userRepository.findAllById(userIds)) {
+            if (u.isActive()) {
+                byId.put(u.getId(), u);
+            }
+        }
+        List<UserDetail> result = new ArrayList<>();
+        for (UUID id : userIds) {
+            User u = byId.get(id);
+            if (u != null) {
+                result.add(new UserDetail(u.getId(), u.getFullName(), u.getEmail(), u.getRole().name()));
+            }
+        }
+        return result;
     }
 }

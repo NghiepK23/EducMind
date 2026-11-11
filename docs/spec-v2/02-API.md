@@ -1,0 +1,196 @@
+# EDUCMIND — API ĐÃ TRIỂN KHAI (Phase 1)
+
+> Chỉ liệt kê endpoint **đang có trong code**. Endpoint của Phase 2/3 (bài tập, bài kiểm tra,
+> analytics, AI) sẽ bổ sung sau. Mọi response thành công dùng envelope
+> `{ success, data, error, meta }`; riêng tải tệp trả nhị phân.
+
+## 0. Quy ước chung
+
+- Base path: `/api/v1`. Auth: `Authorization: Bearer <accessToken>`.
+- **2 vai trò:** `TEACHER`, `STUDENT`. Sai quyền → `403` với `error.code = FORBIDDEN` (hoặc mã cụ thể hơn).
+- Danh sách dùng phân trang offset: `?page=1&size=20` (mặc định 20, tối đa 100), `meta.pagination = {page,size,total_items,total_pages}`.
+- Validate sai → `422 VALIDATION_ERROR`.
+
+## 1. Xác thực & người dùng
+
+| Method | Path | Quyền | Ghi chú |
+|---|---|---|---|
+| POST | `/api/v1/auth/login` | công khai | body `{email, password}` → `{accessToken, tokenType, expiresInSeconds, user}` |
+| POST | `/api/v1/auth/logout` | đã đăng nhập | client bỏ token; API ghi log |
+| POST | `/api/v1/auth/change-password` | đã đăng nhập | `{currentPassword, newPassword}` (US-G04) |
+| POST | `/api/v1/auth/password-reset/request` | công khai | `{email}`; luôn trả cùng thông báo (AC-G02.1) |
+| POST | `/api/v1/auth/password-reset/confirm` | công khai | `{token, newPassword}`; token dùng 1 lần (AC-G02.2) |
+| GET | `/api/v1/users/me` | đã đăng nhập | `{id, fullName, email, role}` |
+| GET | `/api/health` | công khai | health check |
+
+## 2. Lớp học (US-T00) — chỉ TEACHER
+
+| Method | Path | Ghi chú |
+|---|---|---|
+| POST | `/api/v1/classes` | `{name, grade?, schoolYear?}`; người tạo = owner (AC-T00.1) |
+| GET | `/api/v1/classes` | lớp mình phụ trách, kèm `studentCount` |
+| GET | `/api/v1/classes/{id}` | 403 nếu không phải owner |
+| PATCH | `/api/v1/classes/{id}` | sửa name/grade/schoolYear |
+| DELETE | `/api/v1/classes/{id}` | xoá mềm |
+| GET | `/api/v1/classes/{id}/students` | danh sách học sinh + `joinedAt` |
+| POST | `/api/v1/classes/{id}/students` | `{email, fullName?}` → có tài khoản thì thêm, chưa có thì tạo + gửi link đặt mật khẩu (AC-T00.2) |
+| DELETE | `/api/v1/classes/{id}/students/{studentId}` | rời lớp, **giữ** kết quả học tập (AC-T00.4) |
+
+## 3. Khóa học / Chủ đề / Bài học / Mục tiêu (US-T01, T02A, T02, T11, T12)
+
+| Method | Path | Quyền | Ghi chú |
+|---|---|---|---|
+| POST | `/api/v1/classes/{classId}/courses` | TEACHER | AC-T01.1 |
+| GET | `/api/v1/classes/{classId}/courses` | TEACHER (owner) / STUDENT (thành viên) | AC-T01.2 |
+| GET | `/api/v1/courses` | cả hai | khóa học của chính mình |
+| GET | `/api/v1/courses/{id}` | cả hai | |
+| PATCH | `/api/v1/courses/{id}` | TEACHER | |
+| DELETE | `/api/v1/courses/{id}` | TEACHER | xoá mềm |
+| GET | `/api/v1/courses/{courseId}/topics` | cả hai | STUDENT chỉ thấy chủ đề `PUBLISHED` (AC-T02A.2) |
+| POST | `/api/v1/courses/{courseId}/topics` | TEACHER | chủ đề mới = `DRAFT` |
+| PATCH | `/api/v1/topics/{id}` | TEACHER | sửa tiêu đề/mô tả/thứ tự (AC-T02A.3-4) |
+| DELETE | `/api/v1/topics/{id}` | TEACHER | xoá mềm chủ đề + các bài học bên trong (AC-T12.5) |
+| POST | `/api/v1/topics/{id}/publish` \| `/unpublish` | TEACHER | AC-T02A.4 |
+| GET | `/api/v1/topics/{topicId}/lessons` | cả hai | STUDENT: chủ đề phải `PUBLISHED`, chỉ thấy bài `PUBLISHED` (AC-S01.1/4) |
+| GET | `/api/v1/courses/{courseId}/lessons` | cả hai | |
+| POST | `/api/v1/topics/{topicId}/lessons` | TEACHER | bài học thuộc đúng chủ đề của khóa học (AC-T02.6) |
+| GET | `/api/v1/lessons/{id}` | cả hai | |
+| PATCH | `/api/v1/lessons/{id}` | TEACHER | đổi chủ đề phải cùng khóa học |
+| DELETE | `/api/v1/lessons/{id}` | TEACHER | xoá mềm, giữ kết quả (AC-T12.1) |
+| POST | `/api/v1/lessons/{id}/publish` | TEACHER | **bắt buộc có ≥1 mục tiêu** (AC-T02.4) |
+| POST | `/api/v1/lessons/{id}/unpublish` | TEACHER | AC-T02.5 |
+| GET | `/api/v1/lessons/{lessonId}/objectives` | cả hai | |
+| POST | `/api/v1/lessons/{lessonId}/objectives` | TEACHER | `{code, description}`; trùng mã trong bài → 409 (AC-T02.2) |
+| PUT | `/api/v1/objectives/{id}` | TEACHER | chỉ sửa mô tả; **mã bất biến** |
+| DELETE | `/api/v1/objectives/{id}` | TEACHER | |
+
+## 4. Tài liệu (US-T02 AC-T02.3, US-S01 AC-S01.3)
+
+| Method | Path | Quyền | Ghi chú |
+|---|---|---|---|
+| POST | `/api/v1/lessons/{lessonId}/resources` | TEACHER | multipart `file`; ≤ 50MB; pdf/doc/docx/ppt/pptx/xls/xlsx/txt/md/png/jpg/jpeg/gif/mp4/mp3/zip |
+| POST | `/api/v1/courses/{courseId}/resources` | TEACHER | tài liệu chung của khóa học |
+| GET | `/api/v1/lessons/{lessonId}/resources` | cả hai | STUDENT chỉ thấy tài liệu của bài đã xuất bản |
+| GET | `/api/v1/courses/{courseId}/resources` | cả hai | |
+| GET | `/api/v1/resources/{id}/download` | cả hai | trả tệp nhị phân + `Content-Disposition` |
+| DELETE | `/api/v1/resources/{id}` | TEACHER | xoá mềm bản ghi + xoá tệp |
+
+## 5. Bài tập (US-T03, US-T04, US-S02, US-S04, US-S07)
+
+| Method | Path | Quyền | Ghi chú |
+|---|---|---|---|
+| POST | `/api/v1/courses/{courseId}/assignments` | TEACHER | `{title, description, dueDate, maxScore, allowLate, lateCloseDate?, topicId?, lessonId?, objectiveIds[]}`; tạo ở `DRAFT` |
+| GET | `/api/v1/courses/{courseId}/assignments` | cả hai | học sinh chỉ thấy bài `PUBLISHED` thuộc chủ đề/bài học đã xuất bản |
+| GET | `/api/v1/assignments/{id}` | cả hai | |
+| PATCH | `/api/v1/assignments/{id}` | TEACHER | khoá `maxScore` khi đã có bài chấm (AC-T11.2); `scopeType`=COURSE/TOPIC/LESSON để đổi phạm vi |
+| DELETE | `/api/v1/assignments/{id}` | TEACHER | xoá mềm, giữ bài nộp + điểm (AC-T12.3/12.4) |
+| POST | `/api/v1/assignments/{id}/publish` | TEACHER | hạn nộp trong quá khứ → 422 (AC-T03.3) |
+| POST | `/api/v1/assignments/{id}/unpublish` | TEACHER | đã có bài chấm → 409 |
+| GET | `/api/v1/assignments/{id}/submissions` | TEACHER | **roster**: mọi học sinh của lớp, kể cả chưa nộp (AC-T04.1) |
+| PATCH | `/api/v1/submissions/{id}/grade` | TEACHER | `{score, feedback}`; 0 ≤ score ≤ maxScore (AC-T04.2); chấm lại cập nhật bản ghi cũ (AC-T04.4) và ghi `learning_evidence` theo mục tiêu (AC-T04.3) |
+| POST | `/api/v1/assignments/{id}/submission` | STUDENT | `{textContent?, fileUrl?}` — phải có ít nhất một (AC-S02.3); đã nộp → 409 |
+| PATCH | `/api/v1/assignments/{id}/submission` | STUDENT | sửa khi chưa chấm và còn hạn (AC-S07.1/2/3/5) |
+| GET | `/api/v1/assignments/{id}/submission` | STUDENT | kèm `pendingGrade` (AC-S04.1) |
+| DELETE | `/api/v1/assignments/{id}/submission` | STUDENT | xoá mềm; nộp lại = khôi phục bài cũ (AC-S07.4) |
+| POST | `/api/v1/assignments/{id}/submission/attachment` | STUDENT | multipart `file`, ≤ 20MB → trả `fileUrl` để gửi kèm khi nộp |
+| GET | `/api/v1/submissions/{id}/file` | TEACHER (phụ trách) / STUDENT (bài của mình) | tải tệp bài nộp |
+
+Thời hạn nộp: `now ≤ dueDate`, hoặc nếu `allowLate` thì tới `lateCloseDate`; quá hạn → 422 `SUBMISSION_CLOSED`.
+Trạng thái `SUBMITTED`/`LATE` do DB tính lại theo thời điểm nộp/sửa.
+
+## 6. Ngân hàng câu hỏi (US-T05) — chỉ TEACHER
+
+| Method | Path | Ghi chú |
+|---|---|---|
+| POST | `/api/v1/courses/{courseId}/questions` | `{type, difficulty, bloomLevel?, content, options?, correctOptionIndexes?, expectedAnswer?, objectiveIds?}`; nguồn = `MANUAL` (AC-T05.2) |
+| GET | `/api/v1/courses/{courseId}/questions?type=&difficulty=` | |
+| GET | `/api/v1/questions/{id}` | |
+| PATCH | `/api/v1/questions/{id}` | nội dung/đáp án bị khoá khi câu hỏi đã dùng trong bài kiểm tra có lượt làm (AC-T11.4); độ khó/Bloom luôn sửa được |
+| DELETE | `/api/v1/questions/{id}` | xoá mềm, không ảnh hưởng bài kiểm tra đã tạo (AC-T12.2) |
+
+`type`: `SINGLE_CHOICE` | `MULTIPLE_CHOICE` | `TRUE_FALSE` | `SHORT_ANSWER` | `ESSAY`.
+Trắc nghiệm phải có ≥ 2 phương án và đáp án đúng nằm trong phạm vi (AC-T05.1); `TRUE_FALSE` đúng 2 phương án.
+Câu hỏi không gắn mục tiêu vẫn lưu được nhưng không sinh bằng chứng (AC-T05.6, AC-S03.7).
+
+## 7. Bài kiểm tra (US-T06, US-T13, US-T14)
+
+| Method | Path | Quyền | Ghi chú |
+|---|---|---|---|
+| POST | `/api/v1/courses/{courseId}/assessments` | TEACHER | `{title, durationMinutes, maxAttempts, openAt, closeAt, topicId?, lessonId?, questions:[{questionId, weight}]}` |
+| GET | `/api/v1/courses/{courseId}/assessments` | cả hai | học sinh chỉ thấy bài `PUBLISHED` |
+| GET | `/api/v1/assessments/{id}` | cả hai | `maxScore` = tổng trọng số (AC-T06.4) |
+| PATCH | `/api/v1/assessments/{id}` | TEACHER | đổi câu hỏi bị chặn khi đã có lượt làm; `maxAttempts` không thấp hơn số lượt đã làm (AC-T11.6) |
+| DELETE | `/api/v1/assessments/{id}` | TEACHER | xoá mềm |
+| POST | `/api/v1/assessments/{id}/publish` | TEACHER | chưa có câu hỏi → 422 (AC-T13.2) |
+| POST | `/api/v1/assessments/{id}/unpublish` | TEACHER | đã có lượt làm → 409 (AC-T13.4) |
+| GET | `/api/v1/assessments/{id}/results` | TEACHER | mọi học sinh của lớp + điểm cao nhất trong các lượt đã chấm (AC-T14.1/14.2) |
+| GET | `/api/v1/assessments/{id}/attempts?status=` | TEACHER | lọc `IN_PROGRESS` / `SUBMITTED` / `GRADED` (AC-T14.3) |
+| GET | `/api/v1/attempts/{id}/detail` | TEACHER | chi tiết từng câu trả lời để chấm tay |
+| PATCH | `/api/v1/attempts/{id}/answers/{questionId}/grade` | TEACHER | `{score, feedback}`; 0 ≤ score ≤ trọng số (AC-T15.1); chấm đủ câu → lượt làm `GRADED` + tổng điểm (AC-T15.2) |
+
+## 8. Làm bài kiểm tra (US-S03, US-S04) — chỉ STUDENT
+
+| Method | Path | Ghi chú |
+|---|---|---|
+| POST | `/api/v1/assessments/{id}/attempts` | bắt đầu hoặc **mở lại** lượt đang dở (AC-S03.2); ngoài giờ → 422; hết lượt → 422 (AC-S03.1) |
+| GET | `/api/v1/attempts/{id}` | kèm `deadline` = lúc bắt đầu + thời lượng; quá hạn thì tự nộp (AC-S03.3) |
+| PUT | `/api/v1/attempts/{id}/answers/{questionId}` | `{selectedOptionIndexes?}` hoặc `{text?}` |
+| POST | `/api/v1/attempts/{id}/submit` | trắc nghiệm chấm tự động; tự luận ở trạng thái `SUBMITTED` chờ giáo viên (AC-S03.4) |
+| GET | `/api/v1/assessments/{id}/my-attempts` | `totalScore` chỉ có khi lượt đã `GRADED` (AC-S04.2, AC-S04.3) |
+
+Đáp án đúng không bao giờ trả về cho học sinh trong lúc làm bài.
+
+## 9. Thông báo (US-G03)
+
+| Method | Path | Ghi chú |
+|---|---|---|
+| GET | `/api/v1/me/notifications?page=&size=` | chỉ thông báo của chính mình (AC-G03.3) |
+| GET | `/api/v1/me/notifications/unread-count` | `{unreadCount}` |
+| POST | `/api/v1/me/notifications/{id}/read` | cập nhật `is_read`, `read_at` (AC-G03.2) |
+| POST | `/api/v1/me/notifications/read-all` | `{updated}` |
+
+> Bản ghi thông báo **do trigger DB sinh** (V7 — J.4) khi: học sinh nộp bài/nộp lại, bài tập được chấm,
+> bài học/bài tập/bài kiểm tra được xuất bản, AI xong/thất bại, có gợi ý mới, có bài kiểm tra cần chấm.
+
+## 9a. Phân tích học tập — mastery / lỗ hổng / gợi ý (US-T07, T08, S05, S06, H01)
+
+**Giáo viên** (mọi route đều bắt buộc `hasRole('TEACHER')` + quyền trên lớp):
+
+| Method | Path | Ghi chú |
+|---|---|---|
+| GET | `/api/v1/classes/{classId}/mastery?topicId=&lessonId=` | bảng mastery của lớp: `students[].objectives[]` + `objectiveSummary[]` (AC-T07.1/02/03) |
+| GET | `/api/v1/classes/{classId}/students/{studentId}/mastery` | chi tiết một học sinh, mỗi mục tiêu kèm `evidences[]` với `targetType`/`targetApi` mở thẳng bài nộp hoặc lượt làm (AC-T07.4) |
+| GET | `/api/v1/classes/{classId}/knowledge-gaps?status=&topicId=&lessonId=` | danh sách lỗ hổng; **mặc định `OPEN`**; `status` không hợp lệ → 400 `INVALID_FILTER` (AC-T08.1) |
+| POST | `/api/v1/knowledge-gaps/{id}/dismiss` | body `{reason}` (bắt buộc, ≤500 ký tự) → `DISMISSED`; thiếu reason → 422; không phải chủ khóa học → 403 `NOT_COURSE_OWNER`; không tìm thấy → 404 `NOT_FOUND` (AC-T08.5) |
+
+**Học sinh** (`hasRole('STUDENT')`, chỉ dữ liệu của chính mình):
+
+| Method | Path | Ghi chú |
+|---|---|---|
+| GET | `/api/v1/students/me/mastery` | mastery của chính mình, mỗi mục tiêu kèm `evidences[]` (AC-S05.1/02) |
+| GET | `/api/v1/students/me/recommendations?status=` | gợi ý; **mặc định `ACTIVE`**; sắp xếp `createdAt` giảm dần (AC-S06.1) |
+| POST | `/api/v1/recommendations/{id}/accept` | → `ACCEPTED`; đã phản hồi → 409 `RECOMMENDATION_NOT_ACTIVE`; không thuộc mình → 404 (AC-S06.3) |
+| POST | `/api/v1/recommendations/{id}/dismiss` | → `DISMISSED`; lỗi như trên (AC-S06.4) |
+
+- Mastery = trung bình cộng `learning_evidence` (mỗi nguồn giữ kết quả tốt nhất — AC-H01.6).
+  Ngưỡng: `≥0.8` → `MASTERED`, `≥0.5` → `IMPROVING`, dưới → `NEEDS_IMPROVEMENT`, chưa có bằng chứng → `NO_DATA`.
+- Lỗ hổng tự mở khi `NEEDS_IMPROVEMENT` + đủ số bằng chứng (`educmind.analytics.gap-min-evidence`, mặc định 2);
+  chỉ mở lại lỗ hổng đã bỏ qua khi có bằng chứng mới hơn (AC-T08.5, chặn ở cả service lẫn trigger DB).
+- Gợi ý tự sinh/cập nhật khi refresh mastery; muốn khác trạng thái → tạo dòng `ACTIVE` mới (đúng loại còn thiếu).
+- Các mã lỗi của section này: 400 `INVALID_FILTER`, 404 `NOT_FOUND` / `RECOMMENDATION_NOT_FOUND`,
+  409 `RECOMMENDATION_NOT_ACTIVE`, 403 `FORBIDDEN` / `NOT_COURSE_OWNER` (đúng vai trò), 422 `VALIDATION_ERROR`.
+
+## 10. Mã lỗi đang dùng
+
+| HTTP | `error.code` |
+|---|---|
+| 400 | `INVALID_FILTER`, `RESET_TOKEN_INVALID`, `CURRENT_PASSWORD_INVALID` |
+| 401 | `INVALID_CREDENTIALS`, `TOKEN_EXPIRED` |
+| 403 | `FORBIDDEN`, `NOT_CLASS_OWNER`, `NOT_COURSE_OWNER`, `CLASS_ACCESS_DENIED`, `COURSE_ACCESS_DENIED`, `TOPIC_NOT_PUBLISHED`, `LESSON_NOT_PUBLISHED`, `ASSIGNMENT_NOT_PUBLISHED`, `SUBMISSION_ACCESS_DENIED`, `ASSESSMENT_NOT_PUBLISHED` |
+| 404 | `NOT_FOUND`, `CLASS_NOT_FOUND`, `USER_NOT_FOUND`, `STUDENT_NOT_IN_CLASS`, `NOTIFICATION_NOT_FOUND`, `SUBMISSION_NOT_FOUND`, `SUBMISSION_HAS_NO_FILE`, `ATTEMPT_NOT_FOUND`, `RECOMMENDATION_NOT_FOUND` |
+| 405 | `METHOD_NOT_ALLOWED` |
+| 409 | `EMAIL_ALREADY_EXISTS`, `EMAIL_BELONGS_TO_TEACHER`, `STUDENT_ALREADY_IN_CLASS`, `DUPLICATE_OBJECTIVE_CODE`, `MAX_SCORE_LOCKED`, `ASSIGNMENT_HAS_GRADED_SUBMISSIONS`, `SUBMISSION_ALREADY_EXISTS`, `SUBMISSION_ALREADY_GRADED`, `OBJECTIVE_IN_USE`, `QUESTION_LOCKED`, `ASSESSMENT_HAS_ATTEMPTS`, `ATTEMPT_NOT_EDITABLE`, `ATTEMPT_ALREADY_SUBMITTED`, `ATTEMPT_NOT_SUBMITTED`, `RECOMMENDATION_NOT_ACTIVE` |
+| 413 | `FILE_TOO_LARGE` |
+| 415 | `UNSUPPORTED_FILE_TYPE` |
+| 422 | `VALIDATION_ERROR`, `WEAK_PASSWORD`, `EMPTY_FILE`, `LESSON_HAS_NO_OBJECTIVE`, `TOPIC_NOT_IN_SAME_COURSE`, `SCOPE_CONFLICT`, `SCOPE_INVALID`, `SCOPE_NOT_IN_COURSE`, `OBJECTIVE_NOT_IN_COURSE`, `LATE_CLOSE_REQUIRED`, `LATE_CLOSE_INVALID`, `DUE_DATE_IN_PAST`, `SUBMISSION_CLOSED`, `SUBMISSION_EMPTY`, `SCORE_OUT_OF_RANGE`, `QUESTION_OPTIONS_INVALID`, `QUESTION_ANSWER_INVALID`, `INVALID_QUESTION_TYPE`, `INVALID_DIFFICULTY`, `DUPLICATE_QUESTION`, `QUESTION_NOT_IN_COURSE`, `QUESTION_NOT_IN_ASSESSMENT`, `QUESTION_NOT_FOUND`, `INVALID_QUESTION_WEIGHT`, `ASSESSMENT_TIME_INVALID`, `ASSESSMENT_HAS_NO_QUESTION`, `ASSESSMENT_NOT_OPEN`, `ASSESSMENT_CLOSED`, `MAX_ATTEMPTS_REACHED`, `MAX_ATTEMPTS_TOO_LOW`, `ATTEMPT_EXPIRED`, `ANSWER_INVALID` |
+| 500 | `INTERNAL_ERROR`, `STORAGE_ERROR` |

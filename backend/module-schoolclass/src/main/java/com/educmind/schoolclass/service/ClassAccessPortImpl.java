@@ -1,113 +1,77 @@
 package com.educmind.schoolclass.service;
 
+import com.educmind.common.exception.BusinessException;
 import com.educmind.common.port.ClassAccessPort;
 import com.educmind.schoolclass.entity.ClassMember;
-import com.educmind.schoolclass.entity.MemberRole;
 import com.educmind.schoolclass.entity.SchoolClass;
 import com.educmind.schoolclass.repository.ClassMemberRepository;
 import com.educmind.schoolclass.repository.SchoolClassRepository;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 
-/**
- * Implementation thật của ClassAccessPort (định nghĩa ở educmind-common).
- * Đây là "adapter" trong kiến trúc Ports-and-Adapters — nơi duy nhất trong
- * toàn hệ thống được phép JOIN dữ liệu SchoolClass + ClassMember trực tiếp,
- * vì cả 2 entity đều thuộc module này.
- *
- * Spring sẽ tự động đăng ký bean này và "nối dây" cho bất kỳ module nào
- * (vd module-auth, module-course) khai báo @Autowired/constructor-inject
- * ClassAccessPort.
- */
 @Component
 public class ClassAccessPortImpl implements ClassAccessPort {
 
-    private final SchoolClassRepository schoolClassRepository;
-    private final ClassMemberRepository classMemberRepository;
+    private final SchoolClassRepository classRepository;
+    private final ClassMemberRepository memberRepository;
 
-    public ClassAccessPortImpl(
-            SchoolClassRepository schoolClassRepository,
-            ClassMemberRepository classMemberRepository
-    ) {
-        this.schoolClassRepository = schoolClassRepository;
-        this.classMemberRepository = classMemberRepository;
+    public ClassAccessPortImpl(SchoolClassRepository classRepository,
+                               ClassMemberRepository memberRepository) {
+        this.classRepository = classRepository;
+        this.memberRepository = memberRepository;
     }
 
     @Override
-    public boolean isOwnerOrCoTeacher(UUID teacherId, UUID classId) {
-        Optional<SchoolClass> schoolClass = schoolClassRepository.findById(classId);
-        if (schoolClass.isEmpty()) {
-            return false;
+    public boolean isOwner(UUID teacherId, UUID classId) {
+        return classRepository.findByIdAndDeletedAtIsNull(classId)
+                .map(c -> c.getOwnerTeacherId().equals(teacherId))
+                .orElse(false);
+    }
+
+    @Override
+    public boolean isMember(UUID studentId, UUID classId) {
+        return classRepository.existsByIdAndDeletedAtIsNull(classId)
+                && memberRepository.existsByClassIdAndStudentId(classId, studentId);
+    }
+
+    @Override
+    @Transactional
+    public void addStudent(UUID classId, UUID studentId) {
+        if (!classRepository.existsByIdAndDeletedAtIsNull(classId)) {
+            throw new BusinessException("CLASS_NOT_FOUND", "Không tìm thấy lớp học", HttpStatus.NOT_FOUND);
         }
-
-        if (schoolClass.get().getOwnerTeacherId().equals(teacherId)) {
-            return true;
+        if (!memberRepository.existsByClassIdAndStudentId(classId, studentId)) {
+            memberRepository.save(new ClassMember(classId, studentId));
         }
-
-        return classMemberRepository.findByClassIdAndUserId(classId, teacherId)
-                .filter(member -> member.getMemberRole() == MemberRole.TEACHER)
-                .filter(member -> member.getLeftAt() == null)
-                .isPresent();
     }
 
     @Override
-    public boolean isActiveMember(UUID userId, UUID classId) {
-        Optional<SchoolClass> schoolClass = schoolClassRepository.findById(classId);
-        if (schoolClass.isEmpty()) {
-            return false;
-        }
-
-        if (schoolClass.get().getOwnerTeacherId().equals(userId)) {
-            return true;
-        }
-
-        return classMemberRepository.findByClassIdAndUserId(classId, userId)
-                .filter(member -> member.getLeftAt() == null)
-                .isPresent();
+    public List<UUID> findStudentIds(UUID classId) {
+        return memberRepository.findStudentIdsByClassId(classId);
     }
 
     @Override
-    public void addMember(UUID classId, UUID userId, boolean isTeacherRole) {
-        MemberRole memberRole = isTeacherRole ? MemberRole.TEACHER : MemberRole.STUDENT;
-        ClassMember classMember = new ClassMember(classId, userId, memberRole);
-        classMemberRepository.save(classMember);
+    public List<UUID> findClassIdsForTeacher(UUID teacherId) {
+        return classRepository.findByOwnerTeacherIdAndDeletedAtIsNullOrderByCreatedAtDesc(teacherId)
+                .stream().map(SchoolClass::getId).toList();
     }
 
     @Override
-    public Optional<UUID> findSchoolIdByClassId(UUID classId) {
-        return schoolClassRepository.findById(classId)
-                .map(SchoolClass::getSchoolId);
-    }
-
-    @Override
-    public java.util.List<UUID> findAccessibleClassIdsForTeacher(UUID teacherId) {
-        return schoolClassRepository.findAccessibleByTeacher(teacherId).stream()
-                .map(SchoolClass::getId)
+    public List<UUID> findClassIdsForStudent(UUID studentId) {
+        return memberRepository.findByStudentId(studentId).stream()
+                .filter(m -> classRepository.existsByIdAndDeletedAtIsNull(m.getClassId()))
+                .map(ClassMember::getClassId)
+                .distinct()
                 .toList();
     }
 
     @Override
-    public Optional<UUID> findSchoolIdOfActiveClass(UUID classId) {
-        return schoolClassRepository.findByIdAndDeletedAtIsNull(classId)
-                .map(SchoolClass::getSchoolId);
+    public Optional<UUID> findOwnerTeacherId(UUID classId) {
+        return classRepository.findByIdAndDeletedAtIsNull(classId).map(SchoolClass::getOwnerTeacherId);
     }
-
-    @Override
-    public List<UUID> findActiveMemberUserIds(UUID classId) {
-        Set<UUID> ids = new LinkedHashSet<>();
-        schoolClassRepository.findByIdAndDeletedAtIsNull(classId)
-                .ifPresent(c -> ids.add(c.getOwnerTeacherId()));
-        if (ids.isEmpty()) {
-            return List.of();
-        }
-        classMemberRepository.findByClassIdAndLeftAtIsNull(classId)
-                .forEach(m -> ids.add(m.getUserId()));
-        return List.copyOf(ids);
-    }
-
 }

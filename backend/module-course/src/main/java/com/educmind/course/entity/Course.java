@@ -12,14 +12,7 @@ import jakarta.persistence.Table;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/**
- * Entity ứng với bảng `courses` — Module03_Course_Lesson_Resource_FINAL.md, mục C.4.
- *
- * {@link #schoolId} là same-module reference thật ra là cross-module tới module-schoolclass
- * (bảng schools) — UUID thô, không dùng @ManyToOne, đúng nguyên tắc "raw UUID cho FK xuyên
- * module" đã chốt xuyên suốt dự án (tránh circular Maven dependency).
- * {@link #createdBy} là cross-module reference sang module-auth (bảng users).
- */
+/** Bảng courses (Spec v2, mục D — bảng 4). Khóa học thuộc đúng một lớp. */
 @Entity
 @Table(name = "courses")
 public class Course {
@@ -28,32 +21,22 @@ public class Course {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    /** Cross-module reference (module-schoolclass.schools.id). */
-    @Column(name = "school_id", nullable = false)
-    private UUID schoolId;
+    @Column(name = "class_id", nullable = false)
+    private UUID classId;
 
-    @Column(nullable = false, length = 255)
-    private String name;
+    @Column(nullable = false, length = 200)
+    private String title;
 
-    @Column(columnDefinition = "TEXT")
     private String description;
 
-    /** Cross-module reference (module-course.subjects.id) — bắt buộc từ khi đổi kiến trúc, xem V3 migration. */
-    @Column(name = "subject_id", nullable = false)
-    private UUID subjectId;
-
-    /** Cross-module reference (module-auth.users.id) — phải là TEACHER. */
-    @Column(name = "created_by", nullable = false)
-    private UUID createdBy;
-
-    @Column(nullable = false, length = 20)
-    private String status = "ACTIVE";
-
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
+
+    @Column(name = "updated_by")
+    private UUID updatedBy;
 
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
@@ -61,86 +44,60 @@ public class Course {
     protected Course() {
     }
 
-    public Course(UUID schoolId, String name, UUID subjectId, UUID createdBy) {
-        this.schoolId = schoolId;
-        this.name = name;
-        this.subjectId = subjectId;
-        this.createdBy = createdBy;
+    public Course(UUID classId, String title, String description) {
+        this.classId = classId;
+        this.title = title;
+        this.description = description;
     }
 
     @PrePersist
-    protected void onCreate() {
+    void onCreate() {
         OffsetDateTime now = OffsetDateTime.now();
-        this.createdAt = now;
-        this.updatedAt = now;
+        createdAt = now;
+        updatedAt = now;
     }
 
     @PreUpdate
-    protected void onUpdate() {
-        this.updatedAt = OffsetDateTime.now();
+    void onUpdate() {
+        updatedAt = OffsetDateTime.now();
     }
 
-    // ------------------------------------------------------------------
-    // Getters & setters
-    // ------------------------------------------------------------------
+    public void update(String title, String description, UUID actorId) {
+        if (title != null) {
+            this.title = title;
+        }
+        if (description != null) {
+            this.description = description;
+        }
+        this.updatedBy = actorId;
+    }
+
+    public void markDeleted(UUID actorId) {
+        this.deletedAt = OffsetDateTime.now();
+        this.updatedBy = actorId;
+    }
 
     public UUID getId() {
         return id;
     }
 
-    public UUID getSchoolId() {
-        return schoolId;
+    public UUID getClassId() {
+        return classId;
     }
 
-    public String getName() {
-        return name;
-    }
-
-    public void setName(String name) {
-        this.name = name;
+    public String getTitle() {
+        return title;
     }
 
     public String getDescription() {
         return description;
     }
 
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
-    public UUID getSubjectId() {
-        return subjectId;
-    }
-
-    public void setSubjectId(UUID subjectId) {
-        this.subjectId = subjectId;
-    }
-
-    public UUID getCreatedBy() {
-        return createdBy;
-    }
-
-    public String getStatus() {
-        return status;
-    }
-
-    public void setStatus(String status) {
-        this.status = status;
-    }
-
     public OffsetDateTime getCreatedAt() {
         return createdAt;
     }
 
-    public OffsetDateTime getUpdatedAt() {
-        return updatedAt;
-    }
-
     public OffsetDateTime getDeletedAt() {
         return deletedAt;
-    }
-
-    public void setDeletedAt(OffsetDateTime deletedAt) {
-        this.deletedAt = deletedAt;
     }
 }

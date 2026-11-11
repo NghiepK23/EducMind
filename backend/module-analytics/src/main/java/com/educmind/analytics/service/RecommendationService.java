@@ -1,74 +1,121 @@
 package com.educmind.analytics.service;
 
-import com.educmind.analytics.entity.KnowledgeGap;
+import com.educmind.analytics.dto.RecommendationRow;
 import com.educmind.analytics.entity.Recommendation;
+import com.educmind.analytics.entity.RecommendationStatus;
 import com.educmind.analytics.repository.RecommendationRepository;
-import com.educmind.common.port.LessonAccessPort;
-import com.educmind.common.event.RecommendationCreatedEvent;
-import org.springframework.context.ApplicationEventPublisher;
+import com.educmind.common.exception.BusinessException;
+import com.educmind.common.port.CourseContentPort;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
-/**
- * Sinh recommendation nhanh mastery (Module05 FINAL muc 4.5, nhanh 1).
- * Khong co @Transactional rieng: chay chung transaction cua MasteryService.recompute.
- * target_resource_id: resource moi nhat cua lesson, NULL neu khong co ([TBD] theo spec).
- * Khong sinh trung: chi tao khi chua co recommendation ACTIVE cung gap / cung loai.
- */
+/** US-S06 — gợi ý học tập cá nhân hóa cho học sinh. */
 @Service
 public class RecommendationService {
 
     private final RecommendationRepository recommendationRepository;
-    private final RecommendationProperties properties;
-    private final LessonAccessPort lessonAccessPort;
-    private final ApplicationEventPublisher eventPublisher;
+    private final CourseContentPort contentPort;
 
     public RecommendationService(RecommendationRepository recommendationRepository,
-                                 RecommendationProperties properties,
-                                 LessonAccessPort lessonAccessPort,
-                                 ApplicationEventPublisher eventPublisher) {
+                                 CourseContentPort contentPort) {
         this.recommendationRepository = recommendationRepository;
-        this.properties = properties;
-        this.lessonAccessPort = lessonAccessPort;
-        this.eventPublisher = eventPublisher;
+        this.contentPort = contentPort;
     }
 
-    /** Goi ngay sau khi 1 gap vua duoc mo. */
-    public void generateForGap(KnowledgeGap gap, double masteryScore) {
-        if (recommendationRepository.existsByKnowledgeGapIdAndStatus(
-                gap.getId(), Recommendation.STATUS_ACTIVE)) {
-            return;
+    @Transactional(readOnly = true)
+    public List<RecommendationRow> myRecommendations(UUID studentId, String status) {
+        RecommendationStatus filter = parseStatus(status);
+        List<Recommendation> recommendations = filter == null
+                ? recommendationRepository.findByStudentIdOrderByCreatedAtDesc(studentId)
+                : recommendationRepository.findByStudentIdAndStatusOrderByCreatedAtDesc(studentId, filter);
+
+        Map<UUID, CourseContentPort.ObjectiveInfo> infos = new HashMap<>();
+        for (Recommendation recommendation : recommendations) {
+            UUID objectiveId = recommendation.getObjectiveId();
+            if (objectiveId != null && !infos.containsKey(objectiveId)) {
+                contentPort.findObjectiveInfos(List.of(objectiveId)).stream().findFirst()
+                        .ifPresent(info -> infos.put(objectiveId, info));
+            }
         }
-        String type = masteryScore < properties.getMasteryLow()
-                ? Recommendation.TYPE_REVIEW_CONTENT
-                : Recommendation.TYPE_PRACTICE_TARGETED;
-        save(gap.getStudentId(), gap.getLessonId(), gap.getLearningObjectiveId(),
-                gap.getCourseId(), gap.getId(), type);
+
+        List<RecommendationRow> result = new ArrayList<>();
+        for (Recommendation recommendation : recommendations) {
+            result.add(toRow(recommendation, infos.get(recommendation.getObjectiveId())));
+        }
+        return result;
     }
 
-    /** Goi moi lan mastery duoc tinh lai; chi sinh khi mastery >= advanced-threshold. */
-    public void generateAdvancedIfNeeded(UUID studentId, UUID lessonId, UUID learningObjectiveId,
-                                         UUID courseId, double masteryScore) {
-        if (masteryScore < properties.getAdvancedThreshold()) {
-            return;
-        }
-        if (recommendationRepository
-                .existsByStudentIdAndLessonIdAndLearningObjectiveIdAndTypeAndStatus(
-                        studentId, lessonId, learningObjectiveId,
-                        Recommendation.TYPE_ADVANCED_ACTIVITY, Recommendation.STATUS_ACTIVE)) {
-            return;
-        }
-        save(studentId, lessonId, learningObjectiveId, courseId, null,
-                Recommendation.TYPE_ADVANCED_ACTIVITY);
+    /** AC-S06.3: bỏ qua gợi ý. */
+    @Transactional
+    public RecommendationRow dismiss(UUID studentId, UUID recommendationId) {
+        Recommendation recommendation = requireOwn(studentId, recommendationId);
+        recommendation.dismiss(OffsetDateTime.now());
+        recommendationRepository.save(recommendation);
+        return toRow(recommendation, objectiveInfo(recommendation));
     }
 
-    private void save(UUID studentId, UUID lessonId, UUID learningObjectiveId, UUID courseId,
-                      UUID gapId, String type) {
-        UUID resourceId = lessonAccessPort.findLatestResourceIdByLessonId(lessonId).orElse(null);
-        Recommendation saved = recommendationRepository.save(new Recommendation(studentId, lessonId,
-                learningObjectiveId, courseId, gapId, type, resourceId));
-        eventPublisher.publishEvent(new RecommendationCreatedEvent(saved.getId(), studentId, courseId,
-                lessonId, learningObjectiveId, type));
+    /** AC-S06.3: học sinh mở nội dung được gợi ý (UI gọi trước khi điều hướng). */
+    @Transactional
+    public RecommendationRow accept(UUID studentId, UUID recommendationId) {
+        Recommendation recommendation = requireOwn(studentId, recommendationId);
+        recommendation.accept(OffsetDateTime.now());
+        recommendationRepository.save(recommendation);
+        return toRow(recommendation, objectiveInfo(recommendation));
+    }
+
+    private Recommendation requireOwn(UUID studentId, UUID recommendationId) {
+        Recommendation recommendation = recommendationRepository
+                .findByIdAndStudentId(recommendationId, studentId)
+                .orElseThrow(() -> new BusinessException("RECOMMENDATION_NOT_FOUND",
+                        "Không tìm thấy gợi ý học tập", HttpStatus.NOT_FOUND));
+        if (recommendation.getStatus() != RecommendationStatus.ACTIVE) {
+            throw new BusinessException("RECOMMENDATION_NOT_ACTIVE",
+                    "Gợi ý này không còn hiệu lực", HttpStatus.CONFLICT);
+        }
+        return recommendation;
+    }
+
+    private CourseContentPort.ObjectiveInfo objectiveInfo(Recommendation recommendation) {
+        if (recommendation.getObjectiveId() == null) {
+            return null;
+        }
+        return contentPort.findObjectiveInfos(List.of(recommendation.getObjectiveId()))
+                .stream().findFirst().orElse(null);
+    }
+
+    private RecommendationRow toRow(Recommendation recommendation, CourseContentPort.ObjectiveInfo info) {
+        return new RecommendationRow(recommendation.getId(), recommendation.getType().name(),
+                recommendation.getReason(),
+                recommendation.getObjectiveId(),
+                info == null ? null : info.code(),
+                info == null ? null : info.description(),
+                info == null ? null : info.lessonId(),
+                info == null ? null : info.lessonTitle(),
+                info != null && info.lessonPublished(),
+                info == null ? null : info.topicId(),
+                info == null ? null : info.topicTitle(),
+                recommendation.getTargetEntityType(), recommendation.getTargetEntityId(),
+                recommendation.getRelatedAssessmentId(), recommendation.getStatus().name(),
+                recommendation.getCreatedAt(), recommendation.getRespondedAt());
+    }
+
+    private RecommendationStatus parseStatus(String value) {
+        if (value == null || value.isBlank()) {
+            return RecommendationStatus.ACTIVE;
+        }
+        try {
+            return RecommendationStatus.valueOf(value.trim().toUpperCase());
+        } catch (RuntimeException e) {
+            throw new BusinessException("INVALID_FILTER",
+                    "Trạng thái không hợp lệ: " + value, HttpStatus.BAD_REQUEST);
+        }
     }
 }

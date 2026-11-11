@@ -2,28 +2,26 @@ package com.educmind.assignment.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Entity ứng với bảng `assignment_submissions` — V4__module_assignment_assessment.sql,
- * Module04_Assignment_Assessment_FINAL.md mục D.4/D.5.
+ * Bảng assignment_submissions (Spec v2 — bảng 10; US-S02, US-S07, US-T04).
  *
- * {@link #assignmentId} là reference cùng module (assignments). {@link #studentId},
- * {@link #gradedBy} là cross-module reference sang module-auth (bảng users).
- * {@link #resourceId} là cross-module reference sang module-course (bảng resources).
- *
- * [DECIDED — D.5 mục 3] Học sinh chỉ được nộp bài đúng 1 lần, không được sửa/nộp
- * lại kể cả trước deadline (UNIQUE(assignment_id, student_id) ở tầng DB) — vì vậy
- * {@link #submit(String, UUID, boolean)} chỉ được gọi đúng 1 lần trong vòng đời
- * của 1 dòng submission; gọi lại sau khi đã SUBMITTED/LATE là lỗi nghiệp vụ, phải
- * chặn ở tầng Service (ALREADY_SUBMITTED) trước khi gọi entity.
+ * Trigger DB `trg_restrict_submission_edit` (V7 — J.3) là nguồn sự thật cho các quy tắc:
+ * không sửa/xoá khi đã chấm hoặc quá hạn, nộp lại = khôi phục dòng đã xoá mềm,
+ * tự tính SUBMITTED/LATE và is_edited/edited_at.
  */
 @Entity
 @Table(name = "assignment_submissions")
@@ -39,22 +37,21 @@ public class AssignmentSubmission {
     @Column(name = "student_id", nullable = false)
     private UUID studentId;
 
-    @Column(name = "text_answer", columnDefinition = "TEXT")
-    private String textAnswer;
+    @Column(name = "text_content", columnDefinition = "text")
+    private String textContent;
 
-    @Column(name = "resource_id")
-    private UUID resourceId;
+    @Column(name = "file_url", length = 500)
+    private String fileUrl;
 
-    @Column(nullable = false, length = 20)
-    private String status = "NOT_STARTED";
-
-    @Column(name = "submitted_at")
-    private OffsetDateTime submittedAt;
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
+    private SubmissionStatus status;
 
     @Column(precision = 5, scale = 2)
     private BigDecimal score;
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "text")
     private String feedback;
 
     @Column(name = "graded_by")
@@ -63,40 +60,77 @@ public class AssignmentSubmission {
     @Column(name = "graded_at")
     private OffsetDateTime gradedAt;
 
+    @Column(name = "is_edited", nullable = false)
+    private boolean edited;
+
+    @Column(name = "edited_at")
+    private OffsetDateTime editedAt;
+
+    @Column(name = "submitted_at", nullable = false)
+    private OffsetDateTime submittedAt;
+
+    @Column(name = "deleted_at")
+    private OffsetDateTime deletedAt;
+
     protected AssignmentSubmission() {
     }
 
-    public AssignmentSubmission(UUID assignmentId, UUID studentId) {
+    public AssignmentSubmission(UUID assignmentId, UUID studentId, String textContent,
+                                String fileUrl, SubmissionStatus status) {
         this.assignmentId = assignmentId;
         this.studentId = studentId;
+        this.textContent = textContent;
+        this.fileUrl = fileUrl;
+        this.status = status;
     }
 
-    /**
-     * Nộp bài — D.5 mục 2/3. Chỉ gọi được đúng 1 lần (Service phải check
-     * status == NOT_STARTED trước khi gọi, nếu không throw ALREADY_SUBMITTED).
-     *
-     * @param isLate true nếu nộp sau due_date và allow_late_submission=true
-     *               (Service quyết định true/false dựa trên assignment.dueDate,
-     *               entity này không tự biết deadline của assignment cha).
-     */
-    public void submit(String textAnswer, UUID resourceId, boolean isLate) {
-        this.textAnswer = textAnswer;
-        this.resourceId = resourceId;
-        this.status = isLate ? "LATE" : "SUBMITTED";
+    @PrePersist
+    void onCreate() {
+        if (submittedAt == null) {
+            submittedAt = OffsetDateTime.now();
+        }
+    }
+
+    /** Học sinh sửa bài (AC-S07.1/2). Trigger tính lại status + is_edited + edited_at. */
+    public void editContent(String textContent, String fileUrl) {
+        this.textContent = textContent;
+        this.fileUrl = fileUrl;
+    }
+
+    /** Nộp lại sau khi đã xoá mềm (AC-S07.4) — trigger DB reset điểm/nhận xét/trạng thái. */
+    public void restore(String textContent, String fileUrl) {
+        this.deletedAt = null;
+        this.textContent = textContent;
+        this.fileUrl = fileUrl;
+        this.score = null;
+        this.feedback = null;
+        this.gradedBy = null;
+        this.gradedAt = null;
+        this.edited = false;
+        this.editedAt = null;
         this.submittedAt = OffsetDateTime.now();
     }
 
-    /** Chấm điểm/nhận xét — D.5 mục 5, tùy chọn, không bắt buộc mọi assignment. */
-    public void grade(BigDecimal score, String feedback, UUID gradedBy) {
-        this.score = score;
-        this.feedback = feedback;
-        this.gradedBy = gradedBy;
-        this.gradedAt = OffsetDateTime.now();
+    /** Xoá mềm bài nộp (AC-S07.4) — trigger xoá luôn bằng chứng học tập liên quan. */
+    public void markDeleted() {
+        this.deletedAt = OffsetDateTime.now();
     }
 
-    // ------------------------------------------------------------------
-    // Getters
-    // ------------------------------------------------------------------
+    /** Giáo viên chấm / chấm lại (AC-T04.2, AC-T04.4). */
+    public void grade(BigDecimal score, String feedback, UUID teacherId, OffsetDateTime gradedAt) {
+        this.score = score;
+        this.feedback = feedback;
+        this.gradedBy = teacherId;
+        this.gradedAt = gradedAt;
+    }
+
+    public boolean isGraded() {
+        return gradedAt != null;
+    }
+
+    public boolean hasContent() {
+        return (textContent != null && !textContent.isBlank()) || (fileUrl != null && !fileUrl.isBlank());
+    }
 
     public UUID getId() {
         return id;
@@ -110,20 +144,16 @@ public class AssignmentSubmission {
         return studentId;
     }
 
-    public String getTextAnswer() {
-        return textAnswer;
+    public String getTextContent() {
+        return textContent;
     }
 
-    public UUID getResourceId() {
-        return resourceId;
+    public String getFileUrl() {
+        return fileUrl;
     }
 
-    public String getStatus() {
+    public SubmissionStatus getStatus() {
         return status;
-    }
-
-    public OffsetDateTime getSubmittedAt() {
-        return submittedAt;
     }
 
     public BigDecimal getScore() {
@@ -140,5 +170,21 @@ public class AssignmentSubmission {
 
     public OffsetDateTime getGradedAt() {
         return gradedAt;
+    }
+
+    public boolean isEdited() {
+        return edited;
+    }
+
+    public OffsetDateTime getEditedAt() {
+        return editedAt;
+    }
+
+    public OffsetDateTime getSubmittedAt() {
+        return submittedAt;
+    }
+
+    public OffsetDateTime getDeletedAt() {
+        return deletedAt;
     }
 }

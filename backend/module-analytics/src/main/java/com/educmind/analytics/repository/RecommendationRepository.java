@@ -1,31 +1,20 @@
 package com.educmind.analytics.repository;
 
 import com.educmind.analytics.entity.Recommendation;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
+import com.educmind.analytics.entity.RecommendationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 
-import java.util.Collection;
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface RecommendationRepository extends JpaRepository<Recommendation, UUID> {
 
-    /** Đã có recommendation theo trạng thái này cho gap chưa — chống sinh trùng cho loại gắn gap. */
-    boolean existsByKnowledgeGapIdAndStatus(UUID knowledgeGapId, String status);
+    List<Recommendation> findByStudentIdAndStatusOrderByCreatedAtDesc(UUID studentId, RecommendationStatus status);
 
-    /** Chống trùng REATTEMPT_ASSESSMENT: mỗi gap tối đa 1 recommendation loại này đang ACTIVE. */
-    boolean existsByKnowledgeGapIdAndTypeAndStatus(UUID knowledgeGapId, String type, String status);
+    List<Recommendation> findByStudentIdOrderByCreatedAtDesc(UUID studentId);
 
-    /** Chống sinh trùng cho loại không gắn gap (ADVANCED_ACTIVITY). */
-    boolean existsByStudentIdAndLessonIdAndLearningObjectiveIdAndTypeAndStatus(
-            UUID studentId, UUID lessonId, UUID learningObjectiveId, String type, String status);
+    List<Recommendation> findByStudentIdAndObjectiveId(UUID studentId, UUID objectiveId);
 
-    Page<Recommendation> findByStudentIdAndCourseIdAndReviewStatusIn(
-            UUID studentId, UUID courseId, Collection<String> reviewStatuses, Pageable pageable);
-
-    Page<Recommendation> findByStudentIdAndCourseIdAndStatusAndReviewStatusIn(
-            UUID studentId, UUID courseId, String status, Collection<String> reviewStatuses,
-            Pageable pageable);
-
-    java.util.List<Recommendation> findByStudentIdAndCourseIdOrderByCreatedAtDesc(UUID studentId, UUID courseId);
+    Optional<Recommendation> findByIdAndStudentId(UUID id, UUID studentId);
 }

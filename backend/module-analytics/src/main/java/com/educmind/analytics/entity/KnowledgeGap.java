@@ -2,30 +2,28 @@ package com.educmind.analytics.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Entity ứng với bảng `knowledge_gap` — V7__module_analytics_tables.sql,
- * Module05_LearningEvidence_Analytics_FINAL.md mục 3.3 / 4.4.
+ * Bảng knowledge_gaps (Spec v2, mục F — bảng 20; US-T08).
  *
- * Khóa objective là (lessonId, learningObjectiveId). Tối đa 1 gap OPEN cho mỗi
- * (student, lesson, objective) — ràng buộc bằng partial unique index ở DB.
- * Vòng đời: OPEN -> RESOLVED (mastery đủ cao) hoặc OPEN -> DISMISSED (giáo viên bỏ qua).
- * Sau RESOLVED/DISMISSED, nếu mastery lại thấp thì có thể mở gap MỚI (dòng mới).
+ * Mỗi (học sinh, mục tiêu) dùng lại MỘT dòng: mở lại khi kết quả đi xuống, đánh dấu
+ * RESOLVED khi đạt ngưỡng, DISMISSED khi giáo viên bỏ qua kèm lý do.
+ * Trigger V7 (fn_block_reopen_dismissed_gap) chặn mở lại nếu chưa có bằng chứng mới hơn.
  */
 @Entity
-@Table(name = "knowledge_gap")
+@Table(name = "knowledge_gaps")
 public class KnowledgeGap {
-
-    public static final String STATUS_OPEN = "OPEN";
-    public static final String STATUS_RESOLVED = "RESOLVED";
-    public static final String STATUS_DISMISSED = "DISMISSED";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -34,85 +32,69 @@ public class KnowledgeGap {
     @Column(name = "student_id", nullable = false)
     private UUID studentId;
 
-    @Column(name = "lesson_id", nullable = false)
-    private UUID lessonId;
+    @Column(name = "objective_id", nullable = false)
+    private UUID objectiveId;
 
-    @Column(name = "learning_objective_id", nullable = false)
-    private UUID learningObjectiveId;
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
+    private GapStatus status;
 
-    @Column(name = "course_id", nullable = false)
-    private UUID courseId;
-
-    @Column(nullable = false, length = 20)
-    private String status = STATUS_OPEN;
+    @Column(columnDefinition = "text")
+    private String reason;
 
     @Column(name = "opened_at", nullable = false)
     private OffsetDateTime openedAt;
 
-    @Column(name = "opened_reason", nullable = false, length = 500)
-    private String openedReason;
-
     @Column(name = "resolved_at")
     private OffsetDateTime resolvedAt;
-
-    @Column(name = "resolved_reason", length = 500)
-    private String resolvedReason;
 
     @Column(name = "dismissed_by")
     private UUID dismissedBy;
 
-    @Column(name = "dismissed_reason", columnDefinition = "TEXT")
-    private String dismissedReason;
+    @Column(name = "dismissed_at")
+    private OffsetDateTime dismissedAt;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private OffsetDateTime createdAt;
-
-    @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;
+    @Column(name = "dismiss_reason", columnDefinition = "text")
+    private String dismissReason;
 
     protected KnowledgeGap() {
     }
 
-    public KnowledgeGap(UUID studentId, UUID lessonId, UUID learningObjectiveId,
-                        UUID courseId, String openedReason) {
+    public KnowledgeGap(UUID studentId, UUID objectiveId, String reason) {
         this.studentId = studentId;
-        this.lessonId = lessonId;
-        this.learningObjectiveId = learningObjectiveId;
-        this.courseId = courseId;
-        this.openedReason = openedReason;
-        OffsetDateTime now = OffsetDateTime.now();
-        this.openedAt = now;
-        this.createdAt = now;
-        this.updatedAt = now;
+        this.objectiveId = objectiveId;
+        this.status = GapStatus.OPEN;
+        this.reason = reason;
+        this.openedAt = OffsetDateTime.now();
     }
 
-    /** Đóng tự động khi mastery đạt ngưỡng resolve. Chỉ hợp lệ khi gap đang OPEN. */
-    public void resolve(String reason) {
-        requireOpen();
-        this.status = STATUS_RESOLVED;
-        this.resolvedReason = reason;
-        OffsetDateTime now = OffsetDateTime.now();
-        this.resolvedAt = now;
-        this.updatedAt = now;
+    public void updateReason(String reason) {
+        this.reason = reason;
     }
 
-    /** Giáo viên bỏ qua gap. Chỉ hợp lệ khi gap đang OPEN. */
-    public void dismiss(UUID teacherId, String reason) {
-        requireOpen();
-        this.status = STATUS_DISMISSED;
+    /** Mở lại sau khi đã RESOLVED (hoặc DISMISSED nhưng đã có bằng chứng mới). */
+    public void reopen(String reason) {
+        this.status = GapStatus.OPEN;
+        this.reason = reason;
+        this.openedAt = OffsetDateTime.now();
+        this.resolvedAt = null;
+        this.dismissedBy = null;
+        this.dismissedAt = null;
+        this.dismissReason = null;
+    }
+
+    public void resolve(OffsetDateTime at) {
+        this.status = GapStatus.RESOLVED;
+        this.resolvedAt = at;
+    }
+
+    public void dismiss(UUID teacherId, OffsetDateTime at, String reason) {
+        this.status = GapStatus.DISMISSED;
         this.dismissedBy = teacherId;
-        this.dismissedReason = reason;
-        this.updatedAt = OffsetDateTime.now();
-    }
-
-    public boolean isOpen() {
-        return STATUS_OPEN.equals(status);
-    }
-
-    private void requireOpen() {
-        if (!isOpen()) {
-            throw new IllegalStateException("Knowledge gap không ở trạng thái OPEN: " + status);
-        }
+        this.dismissedAt = at;
+        this.dismissReason = reason;
+        this.resolvedAt = null;
     }
 
     public UUID getId() {
@@ -123,51 +105,35 @@ public class KnowledgeGap {
         return studentId;
     }
 
-    public UUID getLessonId() {
-        return lessonId;
+    public UUID getObjectiveId() {
+        return objectiveId;
     }
 
-    public UUID getLearningObjectiveId() {
-        return learningObjectiveId;
-    }
-
-    public UUID getCourseId() {
-        return courseId;
-    }
-
-    public String getStatus() {
+    public GapStatus getStatus() {
         return status;
+    }
+
+    public String getReason() {
+        return reason;
     }
 
     public OffsetDateTime getOpenedAt() {
         return openedAt;
     }
 
-    public String getOpenedReason() {
-        return openedReason;
-    }
-
     public OffsetDateTime getResolvedAt() {
         return resolvedAt;
-    }
-
-    public String getResolvedReason() {
-        return resolvedReason;
     }
 
     public UUID getDismissedBy() {
         return dismissedBy;
     }
 
-    public String getDismissedReason() {
-        return dismissedReason;
+    public OffsetDateTime getDismissedAt() {
+        return dismissedAt;
     }
 
-    public OffsetDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public OffsetDateTime getUpdatedAt() {
-        return updatedAt;
+    public String getDismissReason() {
+        return dismissReason;
     }
 }

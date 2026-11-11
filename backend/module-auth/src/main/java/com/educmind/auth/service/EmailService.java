@@ -1,45 +1,54 @@
 package com.educmind.auth.service;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
 /**
- * Gui email cho luong password reset - Module 1, muc A.6.
- * Chi co dung 1 trach nhiem: soan va gui email chua link reset, khong biet gi ve
- * logic sinh/validate token (do la trach nhiem cua AuthService + PasswordResetTokenRepository).
+ * Gửi email chứa link đặt lại mật khẩu.
+ *
+ * Ở môi trường dev chưa cấu hình SMTP, việc gửi sẽ lỗi — khi đó chỉ ghi log link
+ * (WARN) để dev vẫn thao tác được, API không bị 500. Ở production phải cấu hình
+ * MAIL_USERNAME/MAIL_PASSWORD để mail thực sự đi.
  */
 @Service
 public class EmailService {
+
+    private static final Logger log = LoggerFactory.getLogger(EmailService.class);
 
     private final JavaMailSender mailSender;
     private final String linkBaseUrl;
 
     public EmailService(
             JavaMailSender mailSender,
-            @Value("${educmind.password-reset.link-base-url}") String linkBaseUrl
+            @Value("${educmind.password-reset.link-base-url:http://localhost:5173/reset-password}") String linkBaseUrl
     ) {
         this.mailSender = mailSender;
         this.linkBaseUrl = linkBaseUrl;
     }
 
-    /** Gui email chua link reset password toi dia chi email cua user. rawToken la token THO, chua hash. */
     public void sendPasswordResetEmail(String toEmail, String rawToken) {
         String resetLink = linkBaseUrl + "?token=" + rawToken;
 
         SimpleMailMessage message = new SimpleMailMessage();
         message.setTo(toEmail);
-        message.setSubject("EducMind - Yeu cau dat lai mat khau");
+        message.setSubject("EducMind — Đặt lại mật khẩu");
         message.setText(
-                "Chao ban,\n\n"
-                + "Ban (hoac ai do) vua yeu cau dat lai mat khau cho tai khoan EducMind cua ban.\n"
-                + "Bam vao link sau de dat lai mat khau (link co hieu luc trong 15 phut):\n\n"
+                "Chào bạn,\n\n"
+                + "Ai đó (có thể là bạn) vừa yêu cầu đặt lại mật khẩu cho tài khoản EducMind.\n"
+                + "Bấm vào liên kết sau để đặt mật khẩu mới (liên kết hết hạn sau 15 phút):\n\n"
                 + resetLink + "\n\n"
-                + "Neu ban khong yeu cau viec nay, vui long bo qua email nay.\n\n"
-                + "Tran trong,\nEducMind"
+                + "Nếu bạn không yêu cầu, hãy bỏ qua email này.\n\n"
+                + "Trân trọng,\nEducMind"
         );
 
-        mailSender.send(message);
+        try {
+            mailSender.send(message);
+        } catch (RuntimeException e) {
+            log.warn("Không gửi được email tới {} ({}). Link đặt mật khẩu: {}", toEmail, e.getMessage(), resetLink);
+        }
     }
 }

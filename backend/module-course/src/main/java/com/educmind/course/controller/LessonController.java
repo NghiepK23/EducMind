@@ -21,14 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.UUID;
 
-/**
- * Module03_Course_Lesson_Resource_FINAL.md, mục C.6.
- *
- * Không dùng @RequestMapping ở class (khác CourseController) vì endpoint của Lesson trải
- * trên 2 base path khác nhau: /api/v1/courses/{id}/lessons (tạo/liệt kê, lồng trong Course)
- * và /api/v1/lessons/{id} (thao tác trực tiếp trên 1 lesson cụ thể) — ghi full path ở từng
- * method cho rõ ràng, tránh nhầm lẫn khi 2 base path khác nhau dùng chung 1 prefix.
- */
+/** US-T02 (bài học) + US-S01 (học sinh chỉ thấy bài học đã xuất bản). */
 @RestController
 public class LessonController {
 
@@ -38,84 +31,68 @@ public class LessonController {
         this.lessonService = lessonService;
     }
 
-    @PreAuthorize("hasRole('TEACHER')")
-    @PostMapping("/api/v1/courses/{courseId}/lessons")
-    public ResponseEntity<ApiResponse<LessonResponse>> createLesson(
-            Authentication authentication,
-            @PathVariable UUID courseId,
-            @Valid @RequestBody CreateLessonRequest request
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        LessonResponse response = lessonService.createLesson(actorId, courseId, request);
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(ApiResponse.success(response));
+    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
+    @GetMapping("/api/v1/topics/{topicId}/lessons")
+    public ResponseEntity<ApiResponse<List<LessonResponse>>> listByTopic(
+            Authentication authentication, @PathVariable UUID topicId) {
+        return ResponseEntity.ok(ApiResponse.success(lessonService.listByTopic(
+                Actor.id(authentication), Actor.role(authentication), topicId)));
     }
 
-    @PreAuthorize("hasAnyRole('TEACHER', 'SCHOOL_ADMIN', 'STUDENT')")
+    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
     @GetMapping("/api/v1/courses/{courseId}/lessons")
-    public ResponseEntity<ApiResponse<List<LessonResponse>>> listLessons(
-            Authentication authentication,
-            @PathVariable UUID courseId
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        List<LessonResponse> response = lessonService.listLessons(actorId, courseId);
-        return ResponseEntity.ok(ApiResponse.success(response));
+    public ResponseEntity<ApiResponse<List<LessonResponse>>> listByCourse(
+            Authentication authentication, @PathVariable UUID courseId) {
+        return ResponseEntity.ok(ApiResponse.success(lessonService.listByCourse(
+                Actor.id(authentication), Actor.role(authentication), courseId)));
     }
 
-    @PreAuthorize("hasAnyRole('TEACHER', 'SCHOOL_ADMIN', 'STUDENT')")
+    @PreAuthorize("hasAnyRole('TEACHER','STUDENT')")
     @GetMapping("/api/v1/lessons/{id}")
-    public ResponseEntity<ApiResponse<LessonResponse>> getLessonDetail(
-            Authentication authentication,
-            @PathVariable UUID id
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        LessonResponse response = lessonService.getLessonDetail(actorId, id);
-        return ResponseEntity.ok(ApiResponse.success(response));
+    public ResponseEntity<ApiResponse<LessonResponse>> get(Authentication authentication,
+                                                           @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(lessonService.get(
+                Actor.id(authentication), Actor.role(authentication), id)));
+    }
+
+    @PreAuthorize("hasRole('TEACHER')")
+    @PostMapping("/api/v1/topics/{topicId}/lessons")
+    public ResponseEntity<ApiResponse<LessonResponse>> create(Authentication authentication,
+                                                              @PathVariable UUID topicId,
+                                                              @Valid @RequestBody CreateLessonRequest request) {
+        LessonResponse response = lessonService.create(Actor.id(authentication), topicId, request);
+        return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.success(response));
     }
 
     @PreAuthorize("hasRole('TEACHER')")
     @PatchMapping("/api/v1/lessons/{id}")
-    public ResponseEntity<ApiResponse<LessonResponse>> updateLesson(
-            Authentication authentication,
-            @PathVariable UUID id,
-            @Valid @RequestBody UpdateLessonRequest request
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        LessonResponse response = lessonService.updateLesson(actorId, id, request);
-        return ResponseEntity.ok(ApiResponse.success(response));
+    public ResponseEntity<ApiResponse<LessonResponse>> update(Authentication authentication,
+                                                              @PathVariable UUID id,
+                                                              @Valid @RequestBody UpdateLessonRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                lessonService.update(Actor.id(authentication), id, request)));
     }
 
     @PreAuthorize("hasRole('TEACHER')")
     @DeleteMapping("/api/v1/lessons/{id}")
-    public ResponseEntity<ApiResponse<LessonResponse>> deleteLesson(
-            Authentication authentication,
-            @PathVariable UUID id
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        LessonResponse response = lessonService.deleteLesson(actorId, id);
-        return ResponseEntity.ok(ApiResponse.success(response));
+    public ResponseEntity<ApiResponse<Void>> delete(Authentication authentication, @PathVariable UUID id) {
+        lessonService.delete(Actor.id(authentication), id);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
     @PreAuthorize("hasRole('TEACHER')")
-    @PatchMapping("/api/v1/lessons/{id}/publish")
-    public ResponseEntity<ApiResponse<LessonResponse>> publishLesson(
-            Authentication authentication,
-            @PathVariable UUID id
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        LessonResponse response = lessonService.publishLesson(actorId, id);
-        return ResponseEntity.ok(ApiResponse.success(response));
+    @PostMapping("/api/v1/lessons/{id}/publish")
+    public ResponseEntity<ApiResponse<LessonResponse>> publish(Authentication authentication,
+                                                               @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                lessonService.setPublished(Actor.id(authentication), id, true)));
     }
 
     @PreAuthorize("hasRole('TEACHER')")
-    @PatchMapping("/api/v1/lessons/{id}/unpublish")
-    public ResponseEntity<ApiResponse<LessonResponse>> unpublishLesson(
-            Authentication authentication,
-            @PathVariable UUID id
-    ) {
-        UUID actorId = UUID.fromString(authentication.getName());
-        LessonResponse response = lessonService.unpublishLesson(actorId, id);
-        return ResponseEntity.ok(ApiResponse.success(response));
+    @PostMapping("/api/v1/lessons/{id}/unpublish")
+    public ResponseEntity<ApiResponse<LessonResponse>> unpublish(Authentication authentication,
+                                                                 @PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                lessonService.setPublished(Actor.id(authentication), id, false)));
     }
 }

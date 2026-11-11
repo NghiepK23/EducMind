@@ -1,100 +1,95 @@
 package com.educmind.assessment.dto;
 
-import com.educmind.assessment.entity.CognitiveLevel;
-import com.educmind.assessment.entity.Difficulty;
-import com.educmind.assessment.entity.QuestionType;
+import jakarta.validation.constraints.Size;
 
+import java.util.List;
 import java.util.UUID;
 
+/**
+ * PATCH câu hỏi (US-T11 AC-T11.4): nội dung/đáp án chỉ sửa được khi câu hỏi chưa dùng
+ * trong bài kiểm tra có lượt làm; độ khó và mức Bloom luôn sửa được.
+ * null = giữ nguyên trường đó; objectiveIds null = giữ nguyên danh sách mục tiêu.
+ */
 public class UpdateQuestionRequest {
 
-    private UUID lessonId;
+    private String type;
 
-    private String questionText;
+    private String difficulty;
 
-    private QuestionType questionType;
+    @Size(max = 30, message = "Mức Bloom tối đa 30 ký tự")
+    private String bloomLevel;
 
-    private Difficulty difficulty;
+    private String content;
 
-    private CognitiveLevel cognitiveLevel;
+    private List<String> options;
 
-    private UUID learningObjectiveId;
+    private List<Integer> correctOptionIndexes;
 
-    private Object options;
+    private String expectedAnswer;
 
-    private Object correctAnswer;
+    private List<UUID> objectiveIds;
 
-    private String explanation;
-
-    public UUID getLessonId() {
-        return lessonId;
+    public String getType() {
+        return type;
     }
 
-    public void setLessonId(UUID lessonId) {
-        this.lessonId = lessonId;
+    public void setType(String type) {
+        this.type = type;
     }
 
-    public String getQuestionText() {
-        return questionText;
-    }
-
-    public void setQuestionText(String questionText) {
-        this.questionText = questionText;
-    }
-
-    public QuestionType getQuestionType() {
-        return questionType;
-    }
-
-    public void setQuestionType(QuestionType questionType) {
-        this.questionType = questionType;
-    }
-
-    public Difficulty getDifficulty() {
+    public String getDifficulty() {
         return difficulty;
     }
 
-    public void setDifficulty(Difficulty difficulty) {
+    public void setDifficulty(String difficulty) {
         this.difficulty = difficulty;
     }
 
-    public CognitiveLevel getCognitiveLevel() {
-        return cognitiveLevel;
+    public String getBloomLevel() {
+        return bloomLevel;
     }
 
-    public void setCognitiveLevel(CognitiveLevel cognitiveLevel) {
-        this.cognitiveLevel = cognitiveLevel;
+    public void setBloomLevel(String bloomLevel) {
+        this.bloomLevel = bloomLevel;
     }
 
-    public UUID getLearningObjectiveId() {
-        return learningObjectiveId;
+    public String getContent() {
+        return content;
     }
 
-    public void setLearningObjectiveId(UUID learningObjectiveId) {
-        this.learningObjectiveId = learningObjectiveId;
+    public void setContent(String content) {
+        this.content = content;
     }
 
-    public Object getOptions() {
+    public List<String> getOptions() {
         return options;
     }
 
-    public void setOptions(Object options) {
+    public void setOptions(List<String> options) {
         this.options = options;
     }
 
-    public Object getCorrectAnswer() {
-        return correctAnswer;
+    public List<Integer> getCorrectOptionIndexes() {
+        return correctOptionIndexes;
     }
 
-    public void setCorrectAnswer(Object correctAnswer) {
-        this.correctAnswer = correctAnswer;
+    public void setCorrectOptionIndexes(List<Integer> correctOptionIndexes) {
+        this.correctOptionIndexes = correctOptionIndexes;
     }
 
-    public String getExplanation() {
-        return explanation;
+    public String getExpectedAnswer() {
+        return expectedAnswer;
     }
 
-    public void setExplanation(String explanation) {
-        this.explanation = explanation;
+    public void setExpectedAnswer(String expectedAnswer) {
+        this.expectedAnswer = expectedAnswer;
+    }
+
+    public List<UUID> getObjectiveIds() {
+        return objectiveIds;
+    }
+
+    public void setObjectiveIds(List<UUID> objectiveIds) {
+        this.objectiveIds = objectiveIds;
     }
 }

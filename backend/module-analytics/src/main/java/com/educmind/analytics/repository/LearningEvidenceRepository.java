@@ -1,20 +1,25 @@
 package com.educmind.analytics.repository;
 
+import com.educmind.analytics.entity.EvidenceSource;
 import com.educmind.analytics.entity.LearningEvidence;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface LearningEvidenceRepository extends JpaRepository<LearningEvidence, UUID> {
 
-    /** Toàn bộ evidence của 1 nguồn (1 submission hoặc 1 attempt) — dùng cho onAssignmentGraded. */
-    List<LearningEvidence> findBySourceTypeAndSourceId(String sourceType, UUID sourceId);
+    Optional<LearningEvidence> findByStudentIdAndObjectiveIdAndSourceTypeAndSourceId(
+            UUID studentId, UUID objectiveId, EvidenceSource sourceType, UUID sourceId);
 
-    /** Idempotency: nguồn này đã sinh evidence chưa. */
-    boolean existsBySourceTypeAndSourceId(String sourceType, UUID sourceId);
+    List<LearningEvidence> findByStudentIdOrderByObjectiveIdAsc(UUID studentId);
 
-    /** Evidence của 1 học sinh theo 1 objective — dùng khi tính mastery (bước sau). */
-    List<LearningEvidence> findByStudentIdAndLessonIdAndLearningObjectiveId(
-            UUID studentId, UUID lessonId, UUID learningObjectiveId);
+    List<LearningEvidence> findBySourceTypeAndSourceId(EvidenceSource sourceType, UUID sourceId);
+
+    List<LearningEvidence> findByStudentIdAndObjectiveIdOrderByUpdatedAtAsc(UUID studentId, UUID objectiveId);
+
+    List<LearningEvidence> findByStudentIdInOrderByUpdatedAtDesc(java.util.Collection<UUID> studentIds);
+
+    boolean existsByObjectiveId(UUID objectiveId);
 }

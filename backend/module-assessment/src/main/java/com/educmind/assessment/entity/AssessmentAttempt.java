@@ -7,29 +7,16 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/**
- * Entity ứng với bảng `assessment_attempts` — V4__module_assignment_assessment.sql,
- * Module04_Assignment_Assessment_FINAL.md mục E.4/E.5.
- *
- * {@link #assessmentId} là same-module reference (assessments.id).
- * {@link #studentId} là cross-module reference sang module-auth (bảng users).
- *
- * KHÔNG có createdAt/updatedAt/deletedAt như các entity khác — bảng gốc không có
- * 3 cột này (chỉ startedAt/submittedAt), giữ đúng theo V4 migration thật, không tự
- * thêm audit column không có trong schema.
- *
- * [DECIDED — E.5 mục 4/5] status chỉ chuyển GRADED sau khi TOÀN BỘ câu tự luận
- * (SHORT_ANSWER/ESSAY) trong attempt đã được giáo viên chấm — entity không tự biết
- * điều kiện này (cần join submission_answers), nên {@link #markGraded(BigDecimal)}
- * chỉ là thao tác thuần túy đổi trạng thái + set điểm, Service phải tự kiểm tra đủ
- * điều kiện trước khi gọi.
- */
+/** Bảng assessment_attempts (Spec v2 — bảng 16; US-S03, US-T14, US-T15). */
 @Entity
 @Table(name = "assessment_attempts")
 public class AssessmentAttempt {
@@ -38,24 +25,28 @@ public class AssessmentAttempt {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "assessment_id", nullable = false, updatable = false)
+    @Column(name = "assessment_id", nullable = false)
     private UUID assessmentId;
 
-    @Column(name = "student_id", nullable = false, updatable = false)
+    @Column(name = "student_id", nullable = false)
     private UUID studentId;
 
-    @Column(name = "attempt_number", nullable = false, updatable = false)
-    private int attemptNumber = 1;
+    @Column(name = "attempt_number", nullable = false)
+    private int attemptNumber;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private AttemptStatus status = AttemptStatus.IN_PROGRESS;
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
+    private AttemptStatus status;
 
-    @Column(name = "started_at", nullable = false, updatable = false)
+    @Column(name = "started_at", nullable = false)
     private OffsetDateTime startedAt;
 
     @Column(name = "submitted_at")
     private OffsetDateTime submittedAt;
+
+    @Column(name = "graded_at")
+    private OffsetDateTime gradedAt;
 
     @Column(name = "total_score", precision = 6, scale = 2)
     private BigDecimal totalScore;
@@ -67,32 +58,31 @@ public class AssessmentAttempt {
         this.assessmentId = assessmentId;
         this.studentId = studentId;
         this.attemptNumber = attemptNumber;
-        this.startedAt = OffsetDateTime.now();
+        this.status = AttemptStatus.IN_PROGRESS;
     }
 
-    /**
-     * Nộp bài — E.6, POST /attempts/{id}/submit. Chuyển IN_PROGRESS -> SUBMITTED.
-     * Service tự quyết định có auto-score xong hết trắc nghiệm rồi mới gọi
-     * {@link #markGraded(BigDecimal)} ngay lập tức hay không (nếu đề không có
-     * câu tự luận nào — E.5 mục 4), tùy vào kết quả join submission_answers.
-     */
-    public void submit() {
+    @PrePersist
+    void onCreate() {
+        if (startedAt == null) {
+            startedAt = OffsetDateTime.now();
+        }
+    }
+
+    /** Hạn làm bài được chốt tại thời điểm bắt đầu (AC-T11.5). */
+    public OffsetDateTime deadline(int durationMinutes) {
+        return startedAt.plusMinutes(durationMinutes);
+    }
+
+    public void markSubmitted(OffsetDateTime at) {
         this.status = AttemptStatus.SUBMITTED;
-        this.submittedAt = OffsetDateTime.now();
+        this.submittedAt = at;
     }
 
-    /**
-     * Đánh dấu đã chấm xong toàn bộ — E.5 mục 4/5. Chỉ gọi sau khi Service xác nhận
-     * mọi câu tự luận đã có score_awarded (hoặc đề không có câu tự luận nào).
-     */
-    public void markGraded(BigDecimal totalScore) {
+    public void markGraded(BigDecimal totalScore, OffsetDateTime at) {
         this.status = AttemptStatus.GRADED;
         this.totalScore = totalScore;
+        this.gradedAt = at;
     }
-
-    // ------------------------------------------------------------------
-    // Getters
-    // ------------------------------------------------------------------
 
     public UUID getId() {
         return id;
@@ -120,6 +110,10 @@ public class AssessmentAttempt {
 
     public OffsetDateTime getSubmittedAt() {
         return submittedAt;
+    }
+
+    public OffsetDateTime getGradedAt() {
+        return gradedAt;
     }
 
     public BigDecimal getTotalScore() {

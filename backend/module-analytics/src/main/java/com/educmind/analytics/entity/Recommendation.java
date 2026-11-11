@@ -2,34 +2,28 @@ package com.educmind.analytics.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 /**
- * Entity ứng với bảng `recommendation` — V7__module_analytics_tables.sql,
- * Module05_LearningEvidence_Analytics_FINAL.md mục 3.4 / 4.5. Không có cột priority.
+ * Bảng recommendations (Spec v2, mục F — bảng 21; US-S06, US-H01).
+ *
+ * DB bảo đảm UNIQUE (student_id, type, objective_id, related_assessment_id) WHERE status = 'ACTIVE'
+ * nên tầng ứng dụng luôn tìm bản ghi ACTIVE cùng loại trước khi tạo mới (AC-S06.5).
+ * Trigger V7 tự sinh thông báo NEW_RECOMMENDATION khi INSERT (AC-G03.1).
  */
 @Entity
-@Table(name = "recommendation")
+@Table(name = "recommendations")
 public class Recommendation {
-
-    public static final String TYPE_REVIEW_CONTENT = "REVIEW_CONTENT";
-    public static final String TYPE_PRACTICE_TARGETED = "PRACTICE_TARGETED";
-    public static final String TYPE_ADVANCED_ACTIVITY = "ADVANCED_ACTIVITY";
-    public static final String TYPE_REATTEMPT_ASSESSMENT = "REATTEMPT_ASSESSMENT";
-
-    public static final String STATUS_ACTIVE = "ACTIVE";
-    public static final String STATUS_ACCEPTED = "ACCEPTED";
-    public static final String STATUS_DISMISSED = "DISMISSED";
-    public static final String STATUS_EXPIRED = "EXPIRED";
-
-    public static final String GENERATED_BY_RULE_ENGINE = "RULE_ENGINE";
-    public static final String REVIEW_NOT_REQUIRED = "NOT_REQUIRED";
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -38,79 +32,114 @@ public class Recommendation {
     @Column(name = "student_id", nullable = false)
     private UUID studentId;
 
-    @Column(name = "lesson_id", nullable = false)
-    private UUID lessonId;
+    @Column(name = "objective_id")
+    private UUID objectiveId;
 
-    @Column(name = "learning_objective_id", nullable = false)
-    private UUID learningObjectiveId;
+    @Column(name = "related_assessment_id")
+    private UUID relatedAssessmentId;
 
-    @Column(name = "course_id", nullable = false)
-    private UUID courseId;
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
+    private RecommendationType type;
 
-    @Column(name = "knowledge_gap_id")
-    private UUID knowledgeGapId;
+    @Column(columnDefinition = "text")
+    private String reason;
 
-    @Column(nullable = false, length = 30)
-    private String type;
+    @Column(name = "target_entity_type", length = 50)
+    private String targetEntityType;
 
-    @Column(name = "target_resource_id")
-    private UUID targetResourceId;
+    @Column(name = "target_entity_id")
+    private UUID targetEntityId;
 
-    @Column(name = "generated_by", nullable = false, length = 20)
-    private String generatedBy = GENERATED_BY_RULE_ENGINE;
+    @Enumerated(EnumType.STRING)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
+    private RecommendationStatus status;
 
-    @Column(name = "review_status", nullable = false, length = 20)
-    private String reviewStatus = REVIEW_NOT_REQUIRED;
-
-    @Column(nullable = false, length = 20)
-    private String status = STATUS_ACTIVE;
-
-    @Column(name = "created_at", nullable = false, updatable = false)
+    @Column(name = "created_at", nullable = false)
     private OffsetDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false)
-    private OffsetDateTime updatedAt;
+    @Column(name = "responded_at")
+    private OffsetDateTime respondedAt;
 
     protected Recommendation() {
     }
 
-    public Recommendation(UUID studentId, UUID lessonId, UUID learningObjectiveId, UUID courseId,
-                          UUID knowledgeGapId, String type, UUID targetResourceId) {
+    public Recommendation(UUID studentId, UUID objectiveId, RecommendationType type, String reason,
+                          String targetEntityType, UUID targetEntityId) {
         this.studentId = studentId;
-        this.lessonId = lessonId;
-        this.learningObjectiveId = learningObjectiveId;
-        this.courseId = courseId;
-        this.knowledgeGapId = knowledgeGapId;
+        this.objectiveId = objectiveId;
         this.type = type;
-        this.targetResourceId = targetResourceId;
-        OffsetDateTime now = OffsetDateTime.now();
-        this.createdAt = now;
-        this.updatedAt = now;
+        this.reason = reason;
+        this.targetEntityType = targetEntityType;
+        this.targetEntityId = targetEntityId;
+        this.status = RecommendationStatus.ACTIVE;
+        this.createdAt = OffsetDateTime.now();
     }
 
-    /** Học sinh chấp nhận gợi ý. Điều kiện (đang ACTIVE...) do service kiểm tra trước khi gọi. */
-    public void accept() {
-        this.status = STATUS_ACCEPTED;
-        this.updatedAt = OffsetDateTime.now();
+    public void updateContent(String reason, String targetEntityType, UUID targetEntityId) {
+        this.reason = reason;
+        this.targetEntityType = targetEntityType;
+        this.targetEntityId = targetEntityId;
     }
 
-    /** Học sinh bỏ qua gợi ý. Điều kiện (đang ACTIVE...) do service kiểm tra trước khi gọi. */
-    public void dismiss() {
-        this.status = STATUS_DISMISSED;
-        this.updatedAt = OffsetDateTime.now();
+    public void accept(OffsetDateTime at) {
+        this.status = RecommendationStatus.ACCEPTED;
+        this.respondedAt = at;
     }
 
-    public UUID getId() { return id; }
-    public UUID getStudentId() { return studentId; }
-    public UUID getLessonId() { return lessonId; }
-    public UUID getLearningObjectiveId() { return learningObjectiveId; }
-    public UUID getCourseId() { return courseId; }
-    public UUID getKnowledgeGapId() { return knowledgeGapId; }
-    public String getType() { return type; }
-    public UUID getTargetResourceId() { return targetResourceId; }
-    public String getGeneratedBy() { return generatedBy; }
-    public String getReviewStatus() { return reviewStatus; }
-    public String getStatus() { return status; }
-    public OffsetDateTime getCreatedAt() { return createdAt; }
-    public OffsetDateTime getUpdatedAt() { return updatedAt; }
+    public void dismiss(OffsetDateTime at) {
+        this.status = RecommendationStatus.DISMISSED;
+        this.respondedAt = at;
+    }
+
+    public void expire(OffsetDateTime at) {
+        this.status = RecommendationStatus.EXPIRED;
+        this.respondedAt = at;
+    }
+
+    public UUID getId() {
+        return id;
+    }
+
+    public UUID getStudentId() {
+        return studentId;
+    }
+
+    public UUID getObjectiveId() {
+        return objectiveId;
+    }
+
+    public UUID getRelatedAssessmentId() {
+        return relatedAssessmentId;
+    }
+
+    public RecommendationType getType() {
+        return type;
+    }
+
+    public String getReason() {
+        return reason;
+    }
+
+    public String getTargetEntityType() {
+        return targetEntityType;
+    }
+
+    public UUID getTargetEntityId() {
+        return targetEntityId;
+    }
+
+    public RecommendationStatus getStatus() {
+        return status;
+    }
+
+    public OffsetDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public OffsetDateTime getRespondedAt() {
+        return respondedAt;
+    }
 }

@@ -1,31 +1,22 @@
 package com.educmind.course.dto;
 
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
-/**
- * Request cho POST /api/v1/courses — Module03_Course_Lesson_Resource_FINAL.md, mục C.6.
- *
- * Không có field kiểu ownerTeacherId như CreateClassRequest: endpoint này CHỈ dành cho
- * TEACHER (không có nhánh SCHOOL_ADMIN tạo hộ), nên createdBy luôn là chính actor gọi API —
- * CourseService không cần resolve owner phức tạp như ClassService.createClass().
- */
 public class CreateCourseRequest {
 
     @NotBlank(message = "Tên khóa học không được để trống")
-    private String name;
+    @Size(max = 200, message = "Tên khóa học tối đa 200 ký tự")
+    private String title;
 
     private String description;
 
-    @NotNull(message = "subjectId không được để trống")
-    private java.util.UUID subjectId;
-
-    public String getName() {
-        return name;
+    public String getTitle() {
+        return title;
     }
 
-    public void setName(String name) {
-        this.name = name;
+    public void setTitle(String title) {
+        this.title = title;
     }
 
     public String getDescription() {
@@ -34,13 +25,5 @@ public class CreateCourseRequest {
 
     public void setDescription(String description) {
         this.description = description;
-    }
-
-    public java.util.UUID getSubjectId() {
-        return subjectId;
-    }
-
-    public void setSubjectId(java.util.UUID subjectId) {
-        this.subjectId = subjectId;
     }
 }

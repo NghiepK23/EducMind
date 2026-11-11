@@ -10,26 +10,10 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
-/**
- * Entity ứng với bảng `submission_answers` — V4__module_assignment_assessment.sql,
- * Module04_Assignment_Assessment_FINAL.md mục E.4/E.5.
- *
- * {@link #attemptId} là same-module reference (assessment_attempts.id).
- * {@link #questionId} là same-module reference (questions.id).
- *
- * KHÔNG có createdAt/updatedAt như các entity khác — bảng gốc không có, giữ đúng
- * theo V4 migration thật (cùng lý do đã ghi ở AssessmentAttempt).
- *
- * {@link #studentAnswer}: JSONB tự do, hình dạng theo question_type (cùng lý do
- * Question.options/correctAnswer) — dùng Object chung.
- *
- * [DECIDED — E.5 mục 4] isCorrect/scoreAwarded = NULL cho câu SHORT_ANSWER/ESSAY
- * (chờ giáo viên chấm tay) — {@link #autoScore(boolean, BigDecimal)} chỉ dùng cho
- * câu trắc nghiệm tự động chấm ngay lúc nộp bài; {@link #gradeManually(BigDecimal, String)}
- * dùng cho giáo viên chấm tay câu tự luận (E.6, PATCH /attempts/{id}/grade).
- */
+/** Bảng submission_answers (Spec v2 — bảng 17; US-S03, US-T15). */
 @Entity
 @Table(name = "submission_answers")
 public class SubmissionAnswer {
@@ -38,53 +22,58 @@ public class SubmissionAnswer {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(name = "attempt_id", nullable = false, updatable = false)
+    @Column(name = "attempt_id", nullable = false)
     private UUID attemptId;
 
-    @Column(name = "question_id", nullable = false, updatable = false)
+    @Column(name = "question_id", nullable = false)
     private UUID questionId;
 
+    /** JSONB: mảng chỉ số phương án (trắc nghiệm) hoặc chuỗi (tự luận/ngắn). */
     @JdbcTypeCode(SqlTypes.JSON)
-    @Column(name = "student_answer", columnDefinition = "jsonb")
-    private Object studentAnswer;
+    @Column(name = "answer_content", columnDefinition = "jsonb")
+    private String answerContent;
 
-    @Column(name = "is_correct")
-    private Boolean isCorrect;
+    @Column(precision = 5, scale = 2)
+    private BigDecimal score;
 
-    @Column(name = "score_awarded", precision = 5, scale = 2)
-    private BigDecimal scoreAwarded;
+    @Column(columnDefinition = "text")
+    private String feedback;
 
-    @Column(name = "teacher_feedback", columnDefinition = "TEXT")
-    private String teacherFeedback;
+    @Column(name = "graded_by")
+    private UUID gradedBy;
+
+    @Column(name = "graded_at")
+    private OffsetDateTime gradedAt;
 
     protected SubmissionAnswer() {
     }
 
-    public SubmissionAnswer(UUID attemptId, UUID questionId) {
+    public SubmissionAnswer(UUID attemptId, UUID questionId, String answerContent) {
         this.attemptId = attemptId;
         this.questionId = questionId;
+        this.answerContent = answerContent;
     }
 
-    /** Lưu câu trả lời (autosave, có thể gọi nhiều lần trước khi nộp) — E.6, PATCH /attempts/{id}/answers. */
-    public void saveAnswer(Object studentAnswer) {
-        this.studentAnswer = studentAnswer;
+    public void updateContent(String answerContent) {
+        this.answerContent = answerContent;
     }
 
-    /** Auto-score lúc nộp bài — chỉ cho SINGLE_CHOICE/MULTIPLE_CHOICE/TRUE_FALSE (E.5 mục 4). */
-    public void autoScore(boolean isCorrect, BigDecimal scoreAwarded) {
-        this.isCorrect = isCorrect;
-        this.scoreAwarded = scoreAwarded;
+    public void autoGrade(BigDecimal score) {
+        this.score = score;
+        this.gradedBy = null;
+        this.gradedAt = OffsetDateTime.now();
     }
 
-    /** Chấm tay câu tự luận — SHORT_ANSWER/ESSAY (E.5 mục 4, E.6). */
-    public void gradeManually(BigDecimal scoreAwarded, String teacherFeedback) {
-        this.scoreAwarded = scoreAwarded;
-        this.teacherFeedback = teacherFeedback;
+    public void manualGrade(BigDecimal score, String feedback, UUID teacherId, OffsetDateTime at) {
+        this.score = score;
+        this.feedback = feedback;
+        this.gradedBy = teacherId;
+        this.gradedAt = at;
     }
 
-    // ------------------------------------------------------------------
-    // Getters
-    // ------------------------------------------------------------------
+    public boolean isGraded() {
+        return score != null;
+    }
 
     public UUID getId() {
         return id;
@@ -98,19 +87,23 @@ public class SubmissionAnswer {
         return questionId;
     }
 
-    public Object getStudentAnswer() {
-        return studentAnswer;
+    public String getAnswerContent() {
+        return answerContent;
     }
 
-    public Boolean getIsCorrect() {
-        return isCorrect;
+    public BigDecimal getScore() {
+        return score;
     }
 
-    public BigDecimal getScoreAwarded() {
-        return scoreAwarded;
+    public String getFeedback() {
+        return feedback;
     }
 
-    public String getTeacherFeedback() {
-        return teacherFeedback;
+    public UUID getGradedBy() {
+        return gradedBy;
+    }
+
+    public OffsetDateTime getGradedAt() {
+        return gradedAt;
     }
 }

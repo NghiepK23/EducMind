@@ -1,40 +1,32 @@
 package com.educmind.assessment.dto;
 
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 
 import java.math.BigDecimal;
-import java.util.UUID;
 
+/** US-T15 AC-T15.1: 0 ≤ điểm câu ≤ trọng số của câu. */
 public class GradeAnswerRequest {
 
-    @NotNull(message = "questionId không được để trống")
-    private UUID questionId;
+    @NotNull(message = "Điểm không được để trống")
+    @DecimalMin(value = "0.0", message = "Điểm không được âm")
+    private BigDecimal score;
 
-    private BigDecimal scoreAwarded;
+    private String feedback;
 
-    private String teacherFeedback;
-
-    public UUID getQuestionId() {
-        return questionId;
+    public BigDecimal getScore() {
+        return score;
     }
 
-    public void setQuestionId(UUID questionId) {
-        this.questionId = questionId;
+    public void setScore(BigDecimal score) {
+        this.score = score;
     }
 
-    public BigDecimal getScoreAwarded() {
-        return scoreAwarded;
+    public String getFeedback() {
+        return feedback;
     }
 
-    public void setScoreAwarded(BigDecimal scoreAwarded) {
-        this.scoreAwarded = scoreAwarded;
-    }
-
-    public String getTeacherFeedback() {
-        return teacherFeedback;
-    }
-
-    public void setTeacherFeedback(String teacherFeedback) {
-        this.teacherFeedback = teacherFeedback;
+    public void setFeedback(String feedback) {
+        this.feedback = feedback;
     }
 }
